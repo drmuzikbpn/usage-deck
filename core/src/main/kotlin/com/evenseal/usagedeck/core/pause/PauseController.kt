@@ -6,6 +6,7 @@ package com.evenseal.usagedeck.core.pause
 import com.evenseal.usagedeck.core.Clock
 import com.evenseal.usagedeck.core.daemon.DaemonApi
 import com.evenseal.usagedeck.core.daemon.DaemonException
+import com.evenseal.usagedeck.core.daemon.ResumeResponseDto
 import com.evenseal.usagedeck.core.model.Health
 import com.evenseal.usagedeck.core.model.MachineState
 import com.evenseal.usagedeck.core.model.PauseMode
@@ -94,6 +95,7 @@ class PauseController(
      * sessions is. Resuming an already-lifted scope is a no-op, so the fan-out is harmless on both.
      */
     suspend fun resume(target: PauseTarget): List<PauseOutcome> {
+        _lastOutcomes.value = emptyList()
         val scopeString = target.scope()
         val outcomes = targetMachines(target).map { machineId ->
             val scopes = listOf(scopeString) + nestedPausedScopes(machineId, target)
@@ -102,9 +104,19 @@ class PauseController(
                 if (api == null) {
                     networkOutcome(machineId)
                 } else {
-                    // Every scope gets its call: one refusal must not leave the rest standing, and
-                    // an escalation is only dropped once its scope has really been lifted.
-                    val failures = scopes.associateWith { scope -> resumeFailure(api, scope) }
+                    // Resume the broad scope first. New daemons cascade a project resume to its
+                    // session rules; when the response proves that happened, do not misclassify a
+                    // redundant child no-op as a failure or leave its escalation timer behind.
+                    val broad = resumeAttempt(api, scopeString, hasStandingScope(machineId, scopeString))
+                    val failures = mutableMapOf(scopeString to broad.error)
+                    scopes.drop(1).forEach { childScope ->
+                        if (broad.error == null && cascadeConfirmed(machineId, childScope, broad.response)) {
+                            failures[childScope] = null
+                        } else {
+                            failures[childScope] =
+                                resumeAttempt(api, childScope, hasStandingScope(machineId, childScope)).error
+                        }
+                    }
                     failures.filterValues { it == null }.keys.forEach { cancelEscalation(machineId, it) }
                     val own = failures.getValue(scopeString)
                     if (own == null) {
@@ -114,20 +126,40 @@ class PauseController(
                             null
                         )
                     } else {
-                        PauseOutcome(machineId, false, own.userMessage())
+                        PauseOutcome(machineId, false, own)
                     }
                 }
             }
         }
-        if (target is PauseTarget.All) _lastOutcomes.value = outcomes
+        _lastOutcomes.value = outcomes
         return outcomes
     }
 
-    private suspend fun resumeFailure(api: DaemonApi, scope: String): DaemonException? = try {
-        api.resume(scope)
-        null
+    private data class ResumeAttempt(val response: ResumeResponseDto? = null, val error: String? = null)
+
+    private suspend fun resumeAttempt(api: DaemonApi, scope: String, expectsChange: Boolean): ResumeAttempt = try {
+        val result = api.resume(scope)
+        if (expectsChange && result.removed.isEmpty() && result.resumed.isEmpty()) {
+            ResumeAttempt(error = "Nothing resumed. Refreshing pause state may be required.")
+        } else {
+            ResumeAttempt(response = result)
+        }
     } catch (e: DaemonException) {
-        e
+        ResumeAttempt(error = e.userMessage())
+    }
+
+    private fun cascadeConfirmed(machineId: String, scope: String, response: ResumeResponseDto?): Boolean {
+        response ?: return false
+        val machine = team.value.machine(machineId) ?: return false
+        val ruleIds = machine.rules.filter { it.scope == scope }.map { it.id }
+        if (ruleIds.isNotEmpty() && ruleIds.all(response.removed::contains)) return true
+        val sessionId = scope.removePrefix("session:")
+        return scope.startsWith("session:") && sessionId in response.resumed
+    }
+
+    private fun hasStandingScope(machineId: String, scope: String): Boolean {
+        val machine = team.value.machine(machineId) ?: return false
+        return hasRule(machine, scope) || machine.sessions.any { it.pause?.scope == scope }
     }
 
     /** The session scopes under a project target that are paused or carry a rule on [machineId]. */
@@ -153,7 +185,10 @@ class PauseController(
                 state.machine(target.machineId)?.sessions
                     ?.any { it.projectKey == target.projectKey && it.pause != null } == true ||
                     hasRule(state.machine(target.machineId), scopeString)
-            PauseTarget.All -> state.machines.any { hasRule(it, scopeString) }
+            PauseTarget.All -> state.machines.any { machine ->
+                machine.health != Health.DEAD &&
+                    (hasRule(machine, scopeString) || machine.sessions.any { it.pause?.scope == scopeString })
+            }
         }
     }
 
@@ -168,6 +203,7 @@ class PauseController(
     // ---- internals ---------------------------------------------------------------------------
 
     private suspend fun act(target: PauseTarget, mode: PauseMode): List<PauseOutcome> {
+        _lastOutcomes.value = emptyList()
         val scopeString = target.scope()
         val fanOut = target is PauseTarget.All
         val outcomes = coroutineScope {
@@ -175,7 +211,7 @@ class PauseController(
                 .map { machineId -> async { pauseOne(machineId, scopeString, mode, fanOut) } }
                 .awaitAll()
         }
-        if (fanOut) _lastOutcomes.value = outcomes
+        _lastOutcomes.value = outcomes
         return outcomes
     }
 

@@ -50,6 +50,7 @@ import com.evenseal.usagedeck.ui.components.HomeEmpty
 import com.evenseal.usagedeck.ui.components.HomeEmptyBody
 import com.evenseal.usagedeck.ui.components.LimitBar
 import com.evenseal.usagedeck.ui.components.PauseButton
+import com.evenseal.usagedeck.ui.components.PauseVisual
 import com.evenseal.usagedeck.ui.components.REORDER_SLIDE
 import com.evenseal.usagedeck.ui.components.RenameDialog
 import com.evenseal.usagedeck.ui.components.RepairCard
@@ -182,11 +183,13 @@ fun LedgerScreen(vm: DeckViewModel, onOpen: (Route) -> Unit) {
             }
         }
 
+        val allVisual = vm.visual(PauseTarget.All)
+        val allPaused = allVisual is PauseVisual.Soft || allVisual is PauseVisual.Frozen
         BottomBar(
-            primary = "Pause all",
+            primary = if (allPaused) "Resume all" else "Pause all",
             primaryDanger = false,
             onPrimary = { vm.tap(PauseTarget.All) },
-            onPrimaryHold = { vm.hold(PauseTarget.All) },
+            onPrimaryHold = if (allPaused) null else ({ vm.hold(PauseTarget.All) }),
             secondary = homeSecondary(empty, onOpen)
         )
     }

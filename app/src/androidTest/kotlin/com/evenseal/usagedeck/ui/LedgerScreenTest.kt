@@ -19,9 +19,11 @@ import com.evenseal.usagedeck.core.model.Health
 import com.evenseal.usagedeck.core.model.MachineConfig
 import com.evenseal.usagedeck.core.model.MachineState
 import com.evenseal.usagedeck.core.model.PauseMode
+import com.evenseal.usagedeck.core.model.PauseRule
 import com.evenseal.usagedeck.core.model.PauseState
 import com.evenseal.usagedeck.core.model.TeamState
 import com.evenseal.usagedeck.core.pause.Escalation
+import com.evenseal.usagedeck.core.pause.PauseOutcome
 import com.evenseal.usagedeck.core.pause.PauseTarget
 import com.evenseal.usagedeck.settings.Settings
 import com.evenseal.usagedeck.ui.components.PauseButtonDefaults
@@ -135,6 +137,43 @@ class LedgerScreenTest {
         compose.onNodeWithText("Pause all").performClick()
 
         assertEquals(listOf<PauseTarget>(PauseTarget.All), actions.taps)
+    }
+
+    @Test
+    fun aGlobalPauseChangesTheActionToResumeAll() {
+        val rule = PauseRule("r-all", "all", PauseMode.SOFT, "usage-deck:test", Fx.NOW, "dashboard")
+        val team = TeamState(Fx.twoUsers().machines.map { it.copy(rules = listOf(rule)) })
+        val actions = RecordingPauseActions(paused = setOf("all"))
+        show(fakeViewModel(team = team, actions = actions))
+
+        compose.onNodeWithText("Resume all").performClick()
+
+        assertEquals(listOf<PauseTarget>(PauseTarget.All), actions.taps)
+    }
+
+    @Test
+    fun anEffectiveGlobalPauseChangesTheActionBeforeRulesRefresh() {
+        val team = TeamState(
+            Fx.twoUsers().machines.map { machine ->
+                machine.copy(sessions = machine.sessions.map { it.copy(pause = Fx.softPause("all")) })
+            }
+        )
+        val actions = RecordingPauseActions(paused = setOf("all"))
+        show(fakeViewModel(team = team, actions = actions))
+
+        compose.onNodeWithText("Resume all").assertExists()
+    }
+
+    @Test
+    fun aResumeFailureAppearsInTheStatusChip() {
+        val message = "Nothing resumed. Refreshing pause state may be required."
+        val actions = RecordingPauseActions(
+            lastOutcomes = MutableStateFlow(listOf(PauseOutcome("m1", false, message)))
+        )
+
+        show(fakeViewModel(actions = actions))
+
+        compose.onNodeWithText(message).assertExists()
     }
 
     @Test

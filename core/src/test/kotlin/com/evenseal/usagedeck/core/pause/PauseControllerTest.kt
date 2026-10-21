@@ -51,6 +51,8 @@ class PauseControllerTest {
 
         /** Resume calls for these scopes throw [failWith] every time. */
         var refuseResume: Set<String> = emptySet()
+        var emptyResume: Boolean = false
+        var resumeResponses: Map<String, ResumeResponseDto> = emptyMap()
 
         override suspend fun health(): HealthDto = HealthDto()
 
@@ -85,7 +87,8 @@ class PauseControllerTest {
                 failures--
                 throw failWith
             }
-            return ResumeResponseDto()
+            return resumeResponses[scope]
+                ?: if (emptyResume) ResumeResponseDto() else ResumeResponseDto(removed = listOf("r-$scope"))
         }
 
         override suspend fun rules(): RulesDto = RulesDto()
@@ -128,8 +131,12 @@ class PauseControllerTest {
         rules = rules
     )
 
-    private fun rule(scope: String, ruleReason: String? = "usage-deck:abc", mode: PauseMode = PauseMode.SOFT) =
-        PauseRule("r-1", scope, mode, ruleReason, t0, "dashboard")
+    private fun rule(
+        scope: String,
+        ruleReason: String? = "usage-deck:abc",
+        mode: PauseMode = PauseMode.SOFT,
+        id: String = "r-1"
+    ) = PauseRule(id, scope, mode, ruleReason, t0, "dashboard")
 
     private class Fixture {
         val clock = FakeClock(Instant.parse("2026-09-13T14:00:00Z"))
@@ -453,6 +460,74 @@ class PauseControllerTest {
         assertFalse(outcome.ok)
         assertEquals("Daemon is updating", outcome.error)
         assertTrue(f.api("m1").calls.contains("resume:session:s1"))
+    }
+
+    @Test
+    fun `a cascading project resume cancels child escalations without redundant no-op calls`() = runTest {
+        val firstPause = PauseState(PauseMode.SOFT, "r-s1", "session:s1", t0, emptyList())
+        val secondPause = PauseState(PauseMode.SOFT, "r-s2", "session:s2", t0, emptyList())
+        val f = fixture(
+            listOf(
+                machine(
+                    "m1",
+                    sessions = listOf(session("s1", pause = firstPause), session("s2", pause = secondPause)),
+                    rules = listOf(rule("session:s1", id = "r-s1"), rule("session:s2", id = "r-s2"))
+                )
+            )
+        )
+        f.controller.start()
+        runCurrent()
+        f.controller.soft(PauseTarget.Session("m1", "s1"))
+        f.controller.soft(PauseTarget.Session("m1", "s2"))
+        assertEquals(2, f.controller.pending.value.size)
+        f.api("m1").calls.clear()
+        val project = PauseTarget.Project("m1", "/g/.git")
+        f.api("m1").resumeResponses = mapOf(
+            project.scope() to ResumeResponseDto(
+                removed = listOf("r-s1", "r-s2"),
+                resumed = listOf("s1", "s2")
+            )
+        )
+        f.api("m1").emptyResume = true
+
+        val outcome = f.controller.resume(project).single()
+
+        assertTrue(outcome.ok)
+        assertEquals(listOf("resume:${project.scope()}"), f.api("m1").calls)
+        assertTrue(f.controller.pending.value.isEmpty())
+    }
+
+    @Test
+    fun `an empty resume response does not report success or cancel escalation`() = runTest {
+        val paused = PauseState(PauseMode.SOFT, "r-1", "session:s1", t0, emptyList())
+        val f = fixture(
+            listOf(
+                machine(
+                    "m1",
+                    sessions = listOf(session("s1", pause = paused)),
+                    rules = listOf(rule("session:s1"))
+                )
+            )
+        )
+        f.controller.start()
+        runCurrent()
+        f.controller.soft(PauseTarget.Session("m1", "s1"))
+        f.api("m1").calls.clear()
+        f.api("m1").emptyResume = true
+
+        val outcome = f.controller.resume(PauseTarget.Session("m1", "s1")).single()
+
+        assertFalse(outcome.ok)
+        assertTrue(outcome.error!!.contains("Nothing resumed"))
+        assertEquals(listOf(outcome), f.controller.lastOutcomes.value)
+        assertEquals(1, f.controller.pending.value.size)
+    }
+
+    @Test
+    fun `global state ignores stale all rules on dead machines`() = runTest {
+        val f = fixture(listOf(machine("m1", health = Health.DEAD, rules = listOf(rule("all")))))
+
+        assertFalse(f.controller.isPaused(PauseTarget.All))
     }
 
     @Test

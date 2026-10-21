@@ -55,6 +55,7 @@ import com.evenseal.usagedeck.ui.components.Format
 import com.evenseal.usagedeck.ui.components.HomeEmpty
 import com.evenseal.usagedeck.ui.components.HomeEmptyBody
 import com.evenseal.usagedeck.ui.components.MachineWaitRow
+import com.evenseal.usagedeck.ui.components.PauseVisual
 import com.evenseal.usagedeck.ui.components.PrimaryButton
 import com.evenseal.usagedeck.ui.components.REORDER_SLIDE
 import com.evenseal.usagedeck.ui.components.RepairCard
@@ -104,6 +105,7 @@ fun WideDockScreen(vm: DeckViewModel, onOpen: (Route) -> Unit) {
                 modifier = Modifier.width(RAIL_WIDTH).fillMaxHeight()
             ) {
                 RailActions(
+                    paused = vm.visual(PauseTarget.All).let { it is PauseVisual.Soft || it is PauseVisual.Frozen },
                     onPauseAll = { vm.tap(PauseTarget.All) },
                     onPauseAllHold = { vm.hold(PauseTarget.All) },
                     navigation = homeNavigation(empty, onOpen)
@@ -247,13 +249,18 @@ private fun Rail(
  * labels side by side at a readable size.
  */
 @Composable
-private fun RailActions(onPauseAll: () -> Unit, onPauseAllHold: () -> Unit, navigation: Pair<String, () -> Unit>) {
+private fun RailActions(
+    paused: Boolean,
+    onPauseAll: () -> Unit,
+    onPauseAllHold: () -> Unit,
+    navigation: Pair<String, () -> Unit>
+) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         PrimaryButton(
-            label = "Pause all",
+            label = if (paused) "Resume all" else "Pause all",
             danger = false,
             onPrimary = onPauseAll,
-            onPrimaryHold = onPauseAllHold,
+            onPrimaryHold = if (paused) null else onPauseAllHold,
             modifier = Modifier.fillMaxWidth(),
             pad = 6.dp,
             centered = true

@@ -13,9 +13,11 @@ import com.evenseal.usagedeck.core.model.ActivityOrder
 import com.evenseal.usagedeck.core.model.BurnHistory
 import com.evenseal.usagedeck.core.model.Health
 import com.evenseal.usagedeck.core.model.PauseMode
+import com.evenseal.usagedeck.core.model.PauseState
 import com.evenseal.usagedeck.core.model.ProjectView
 import com.evenseal.usagedeck.core.model.TeamState
 import com.evenseal.usagedeck.core.pause.Escalation
+import com.evenseal.usagedeck.core.pause.PauseOutcome
 import com.evenseal.usagedeck.core.pause.PauseTarget
 import com.evenseal.usagedeck.kiosk.DeckMode
 import com.evenseal.usagedeck.service.DeckGraph
@@ -47,6 +49,7 @@ import kotlinx.coroutines.launch
  */
 interface PauseActions {
     val inFlight: StateFlow<Set<String>>
+    val lastOutcomes: StateFlow<List<PauseOutcome>>
 
     fun tap(target: PauseTarget)
 
@@ -109,8 +112,7 @@ class DeckViewModel(
     /** One ticker for the entire UI; every countdown and age on screen reads from it. */
     val now: StateFlow<Instant> = _now.asStateFlow()
 
-    /** The most recent WARN/CRITICAL body, shown in the status bar for a minute. */
-    val alertChip: StateFlow<String?> = alerts
+    private val limitChip: StateFlow<String?> = alerts
         .flatMapLatest { alert ->
             if (alert == null || (alert.kind != AlertKind.WARN && alert.kind != AlertKind.CRITICAL)) {
                 flowOf<String?>(null)
@@ -122,6 +124,25 @@ class DeckViewModel(
                 }
             }
         }
+        .stateIn(work, SharingStarted.Eagerly, null)
+
+    private val pauseChip: StateFlow<String?> = actions.lastOutcomes
+        .flatMapLatest { outcomes ->
+            val error = outcomes.firstOrNull { !it.ok }?.error
+            if (error == null) {
+                flowOf<String?>(null)
+            } else {
+                flow {
+                    emit(error)
+                    delay(CHIP_MILLIS)
+                    emit(null)
+                }
+            }
+        }
+        .stateIn(work, SharingStarted.Eagerly, null)
+
+    /** The most recent limit warning or pause failure, shown in the status bar for a minute. */
+    val alertChip: StateFlow<String?> = combine(pauseChip, limitChip) { pause, limit -> pause ?: limit }
         .stateIn(work, SharingStarted.Eagerly, null)
 
     /** The night scrim multiplier: full brightness unless quiet hours are on (spec §5). */
@@ -193,6 +214,8 @@ class DeckViewModel(
         if (isInFlight(target)) return PauseVisual.InFlight
         if (isDead(target)) return PauseVisual.Disabled
 
+        inheritedPauseSource(target)?.let { return PauseVisual.Inherited(it) }
+
         val state = team.value
         val pause = when (target) {
             is PauseTarget.Session -> state.session(target.machineId, target.sessionId)?.pause
@@ -201,7 +224,18 @@ class DeckViewModel(
                     ?.filter { it.projectKey == target.projectKey }
                     ?.mapNotNull { it.pause }
                     ?.maxByOrNull { it.mode.ordinal }
-            PauseTarget.All -> null
+            PauseTarget.All ->
+                state.machines
+                    .filter { it.health != Health.DEAD }
+                    .flatMap { machine ->
+                        machine.sessions.mapNotNull { it.pause }.filter { it.scope == target.scope() } +
+                            machine.rules
+                                .filter { it.scope == target.scope() }
+                                .map { rule ->
+                                    PauseState(rule.mode, rule.id, rule.scope, rule.createdAt, emptyList())
+                                }
+                    }
+                    .maxByOrNull { it.mode.ordinal }
         }
 
         return when {
@@ -211,6 +245,36 @@ class DeckViewModel(
             pause?.mode == PauseMode.SOFT || actions.isPaused(target) -> PauseVisual.Soft(countdownFor(target))
             else -> PauseVisual.Idle
         }
+    }
+
+    /** A broader rule must be resumed at its own scope; a child resume would be a silent no-op. */
+    fun inheritedPauseSource(target: PauseTarget): String? {
+        if (target === PauseTarget.All) return null
+        val machineId = machineIdOf(target) ?: return null
+        val machine = team.value.machine(machineId) ?: return null
+        val effectiveScopes = when (target) {
+            is PauseTarget.Project ->
+                machine.sessions
+                    .filter { it.projectKey == target.projectKey }
+                    .mapNotNull { it.pause?.scope }
+            is PauseTarget.Session -> listOfNotNull(
+                machine.sessions.firstOrNull { it.sessionId == target.sessionId }?.pause?.scope
+            )
+            PauseTarget.All -> emptyList()
+        }
+        if (PauseTarget.All.scope() in effectiveScopes || machine.rules.any { it.scope == PauseTarget.All.scope() }) {
+            return PauseVisual.Inherited.ALL
+        }
+        if (target is PauseTarget.Session) {
+            val projectKey = machine.sessions
+                .firstOrNull { it.sessionId == target.sessionId }
+                ?.projectKey
+            val projectScope = projectKey?.let { PauseTarget.Project(machineId, it).scope() }
+            if (projectScope in effectiveScopes || machine.rules.any { it.scope == projectScope }) {
+                return PauseVisual.Inherited.PROJECT
+            }
+        }
+        return null
     }
 
     fun tap(target: PauseTarget) = actions.tap(target)
@@ -255,6 +319,7 @@ class DeckViewModel(
 /** The production [PauseActions], fired on the graph's scope so a gesture never blocks the frame. */
 private class ControllerPauseActions(private val graph: DeckGraph) : PauseActions {
     override val inFlight: StateFlow<Set<String>> get() = graph.pause.inFlight
+    override val lastOutcomes: StateFlow<List<PauseOutcome>> get() = graph.pause.lastOutcomes
 
     override fun tap(target: PauseTarget) {
         graph.scope.launch { graph.pause.tap(target) }

@@ -37,6 +37,7 @@ class MachineClientTest {
         var summaryDto = SummaryDto()
         var sessionsDto = SessionsDto()
         var tokensDto = TokensDto()
+        var rulesDto = RulesDto()
         var sessionsEtag: String? = "W/\"9\""
         var failSummary: DaemonException? = null
         var failHealth: DaemonException? = null
@@ -87,7 +88,7 @@ class MachineClientTest {
             calls += "rules"
             gate?.let { withContext(NonCancellable) { it.await() } }
             failRules?.let { throw it }
-            return RulesDto()
+            return rulesDto
         }
     }
 
@@ -444,11 +445,27 @@ class MachineClientTest {
         assertEquals(MachineState.Transport.POLLING, f.client.state.value.transport)
         assertTrue(f.api.calls.contains("summary"))
         assertTrue(f.api.calls.contains("sessions:null"))
+        assertTrue(f.api.calls.contains("rules"))
 
         // the etag from the first poll is sent on the next one
         advanceTimeBy(2_100)
         runCurrent()
         assertTrue(f.api.calls.contains("sessions:W/\"9\""))
+    }
+
+    @Test
+    fun `polling refreshes pause rules when the event stream is unavailable`() = runTest {
+        val f = fixture()
+        f.api.rulesDto = RulesDto(rules = listOf(rule("all")))
+        val err = DaemonException("network", 0, "refused", null)
+        f.events.emit(Connection.Closed(err))
+        runCurrent()
+        advanceTimeBy(3_100)
+        runCurrent()
+        f.events.emit(Connection.Closed(err))
+        runCurrent()
+
+        assertEquals(listOf("all"), f.client.state.value.rules.map { it.scope })
     }
 
     @Test

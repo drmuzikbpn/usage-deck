@@ -12,6 +12,7 @@ import com.evenseal.usagedeck.core.model.BurnHistory
 import com.evenseal.usagedeck.core.model.ProjectTokens
 import com.evenseal.usagedeck.core.model.TeamState
 import com.evenseal.usagedeck.core.model.Tokens
+import com.evenseal.usagedeck.core.pause.PauseTarget
 import com.evenseal.usagedeck.ui.project.BurnChart
 import com.evenseal.usagedeck.ui.project.ProjectScreen
 import com.evenseal.usagedeck.ui.theme.DeckTheme
@@ -60,6 +61,24 @@ class ProjectScreenTest {
                 ProjectScreen(vm = vm, machineId = "m1", key = projectKey, onBack = {})
             }
         }
+    }
+
+    @Test
+    fun aProjectInheritedFromPauseAllOffersTheEffectiveResumeAllAction() {
+        val pausedTeam = TeamState(
+            team().machines.map { machine ->
+                machine.copy(sessions = machine.sessions.map { it.copy(pause = Fx.softPause("all")) })
+            }
+        )
+        val actions = RecordingPauseActions(paused = setOf("all"))
+        val vm = fakeViewModel(team = pausedTeam, actions = actions, burn = burnWith38kPerMinute())
+        compose.setContent {
+            DeckTheme { ProjectScreen(vm = vm, machineId = "m1", key = projectKey, onBack = {}) }
+        }
+
+        compose.onNodeWithText("Resume all").performClick()
+
+        org.junit.Assert.assertEquals(listOf<PauseTarget>(PauseTarget.All), actions.taps)
     }
 
     @Test

@@ -41,6 +41,14 @@ sealed interface PauseVisual {
     /** Hard-paused (SIGSTOP); [elapsed] is how long it has been frozen. */
     data class Frozen(val elapsed: String) : PauseVisual
 
+    /** Paused by a broader project/all rule; this narrower control cannot resume it. */
+    data class Inherited(val source: String) : PauseVisual {
+        companion object {
+            const val ALL = "Pause all"
+            const val PROJECT = "project pause"
+        }
+    }
+
     /** The machine is dead or the session cannot be paused. */
     object Disabled : PauseVisual
 
@@ -56,12 +64,14 @@ sealed interface PauseVisual {
 @Composable
 fun PauseButton(visual: PauseVisual, size: Dp = 34.dp, onTap: () -> Unit, onHold: () -> Unit) {
     val haptics = LocalHapticFeedback.current
-    val enabled = visual !is PauseVisual.Disabled && visual !is PauseVisual.InFlight
+    val enabled = visual !is PauseVisual.Disabled && visual !is PauseVisual.InFlight &&
+        visual !is PauseVisual.Inherited
     var holding by remember { mutableStateOf(false) }
 
     val ring = when {
         holding -> DeckColors.crit
         visual is PauseVisual.Frozen -> DeckColors.frozen
+        visual is PauseVisual.Inherited -> DeckColors.warn
         visual is PauseVisual.Soft -> DeckColors.warn
         visual is PauseVisual.Disabled -> DeckColors.line
         else -> DeckColors.dim
@@ -69,17 +79,20 @@ fun PauseButton(visual: PauseVisual, size: Dp = 34.dp, onTap: () -> Unit, onHold
     val label = when (visual) {
         is PauseVisual.Soft -> visual.countdown ?: PLAY_GLYPH
         is PauseVisual.Frozen -> visual.elapsed
+        is PauseVisual.Inherited -> LOCK_GLYPH
         else -> PAUSE_GLYPH
     }
     val fill = when {
         visual is PauseVisual.Frozen -> DeckColors.frozen.copy(alpha = 0.12f)
         visual is PauseVisual.Soft -> DeckColors.warn.copy(alpha = 0.10f)
+        visual is PauseVisual.Inherited -> DeckColors.warn.copy(alpha = 0.10f)
         else -> DeckColors.surface
     }
     val labelColor = when {
         !enabled -> DeckColors.dim
         visual is PauseVisual.Frozen -> DeckColors.frozen
         visual is PauseVisual.Soft -> DeckColors.warn
+        visual is PauseVisual.Inherited -> DeckColors.warn
         else -> DeckColors.muted
     }
 
@@ -88,7 +101,11 @@ fun PauseButton(visual: PauseVisual, size: Dp = 34.dp, onTap: () -> Unit, onHold
             modifier = Modifier
                 .size(size)
                 .semantics {
-                    contentDescription = PauseButtonDefaults.CONTENT_DESCRIPTION
+                    contentDescription = if (visual is PauseVisual.Inherited) {
+                        "paused by ${visual.source}"
+                    } else {
+                        PauseButtonDefaults.CONTENT_DESCRIPTION
+                    }
                     if (!enabled) disabled()
                 }
                 .pointerInput(enabled) {
@@ -143,3 +160,4 @@ object PauseButtonDefaults {
 
 private const val PAUSE_GLYPH = "❚❚"
 private const val PLAY_GLYPH = "▶"
+private const val LOCK_GLYPH = "↳"

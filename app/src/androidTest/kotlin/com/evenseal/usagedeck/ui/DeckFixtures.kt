@@ -13,6 +13,7 @@ import com.evenseal.usagedeck.core.model.LimitStatus
 import com.evenseal.usagedeck.core.model.MachineConfig
 import com.evenseal.usagedeck.core.model.MachineState
 import com.evenseal.usagedeck.core.model.PauseMode
+import com.evenseal.usagedeck.core.model.PauseRule
 import com.evenseal.usagedeck.core.model.PauseState
 import com.evenseal.usagedeck.core.model.ProjectTokens
 import com.evenseal.usagedeck.core.model.Session
@@ -20,6 +21,7 @@ import com.evenseal.usagedeck.core.model.TeamState
 import com.evenseal.usagedeck.core.model.Tokens
 import com.evenseal.usagedeck.core.model.User
 import com.evenseal.usagedeck.core.pause.Escalation
+import com.evenseal.usagedeck.core.pause.PauseOutcome
 import com.evenseal.usagedeck.core.pause.PauseTarget
 import com.evenseal.usagedeck.kiosk.DeckMode
 import com.evenseal.usagedeck.settings.Settings
@@ -89,7 +91,8 @@ object Fx {
         health: Health = Health.FRESH,
         sessions: List<Session> = emptyList(),
         today: Tokens = Tokens(input = 3_114_754),
-        projectTokens: List<ProjectTokens> = emptyList()
+        projectTokens: List<ProjectTokens> = emptyList(),
+        rules: List<PauseRule> = emptyList()
     ) = MachineState(
         config = MachineConfig(id, name, "100.1.1.1", 8787, "token"),
         health = health,
@@ -101,7 +104,7 @@ object Fx {
         limitsFetchedAt = NOW.minusSeconds(5),
         today = today,
         sessions = sessions,
-        rules = emptyList(),
+        rules = rules,
         update = null,
         projectTokens = projectTokens,
         rev = 7,
@@ -136,7 +139,8 @@ object Fx {
 class RecordingPauseActions(
     private val paused: Set<String> = emptySet(),
     private val escalations: Map<String, Escalation> = emptyMap(),
-    override val inFlight: StateFlow<Set<String>> = MutableStateFlow(emptySet())
+    override val inFlight: StateFlow<Set<String>> = MutableStateFlow(emptySet()),
+    override val lastOutcomes: StateFlow<List<PauseOutcome>> = MutableStateFlow(emptyList())
 ) : PauseActions {
     val taps = mutableListOf<PauseTarget>()
     val holds = mutableListOf<PauseTarget>()
