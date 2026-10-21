@@ -18,6 +18,8 @@ import androidx.compose.ui.test.swipeLeft
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.evenseal.usagedeck.core.model.MachineConfig
 import com.evenseal.usagedeck.core.model.MachineState
+import com.evenseal.usagedeck.core.model.PauseMode
+import com.evenseal.usagedeck.core.model.PauseRule
 import com.evenseal.usagedeck.core.model.TeamState
 import com.evenseal.usagedeck.core.model.User
 import com.evenseal.usagedeck.ui.components.SETTINGS_CHIP
@@ -87,6 +89,15 @@ class WideDockScreenTest {
         compose.onNodeWithText("Pause all").assertExists()
         compose.onNodeWithText("Projects").performClick()
         assertEquals(listOf<Route>(Route.Projects), opened)
+    }
+
+    @Test
+    fun aGlobalPauseChangesTheRailActionToResumeAll() {
+        val rule = PauseRule("r-all", "all", PauseMode.SOFT, "usage-deck:test", Fx.NOW, "dashboard")
+        val team = TeamState(Fx.twoUsers().machines.map { it.copy(rules = listOf(rule)) })
+        showLandscape(fakeViewModel(team = team, actions = RecordingPauseActions(paused = setOf("all"))))
+
+        compose.onNodeWithText("Resume all").assertExists()
     }
 
     @Test

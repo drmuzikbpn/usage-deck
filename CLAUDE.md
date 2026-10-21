@@ -192,6 +192,13 @@ owner", never a person's name; never write a serial number, a real host name or 
 - Daemons before 0.1.66 resume exactly the scope they are given; newer ones
   cascade a project resume and keep one rule per scope. The phone fans a project resume out to the
   session rules under it so both behave; resuming an already-lifted scope is a no-op.
+  `PauseController.resume` calls the broad scope first and skips a child whose rule ids (or
+  session id) the response already lists as removed/resumed. A resume that returns nothing for a
+  scope the deck saw standing is reported as a failure (status chip), never as success.
+- A session or project paused by a broader rule (`all`, or its project) shows
+  `PauseVisual.Inherited` (↳, disabled): resuming the child scope would be a silent no-op. The
+  bottom bar / rail reads "Resume all" whenever `all` stands, from rules or session pause scopes;
+  polling fetches `/v1/pause/rules` too so this holds without SSE.
 - Hard freeze (daemon §23.16, from the release after 0.1.65) stops only tool subprocesses and holds
   the next tool at the gate; `pause.frozenPids` never holds the session pid and an empty list under a
   hard rule is normal. `pause.freezes` ≥ 2 means re-frozen under a standing rule (rendered "frozen again ×N").

@@ -90,6 +90,8 @@ Tick each line, or write down what happened instead.
       arrival and the row reads **frozen again ×2**.
 - [ ] Hold *Pause all* → every reachable machine freezes; a dead machine is skipped, not retried
       forever.
+- [ ] With *Pause all* standing → the button reads **Resume all**, session and project buttons show
+      ↳ (disabled), and tapping *Resume all* lifts everything. Same with the event stream down.
 - [ ] A session discovered from its transcript (no trusted pid) refuses a hard pause with a clear
       message.
 

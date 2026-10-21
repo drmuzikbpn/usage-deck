@@ -258,6 +258,13 @@ class MachineClient(
         } catch (e: DaemonException) {
             _state.update { it.copy(lastError = e.userMessage()) }
         }
+        try {
+            val rules = api.rules()
+            updateLive { it.copy(rules = rules.rules.map { rule -> rule.toModel() }) }
+            reachable = true
+        } catch (e: DaemonException) {
+            _state.update { it.copy(lastError = e.userMessage()) }
+        }
         if (reachable) touch()
     }
 

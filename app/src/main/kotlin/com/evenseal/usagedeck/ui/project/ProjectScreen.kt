@@ -91,12 +91,24 @@ fun ProjectScreen(vm: DeckViewModel, machineId: String, key: String, onBack: () 
             }
         }
 
-        val paused = vm.visual(target).let { it is PauseVisual.Soft || it is PauseVisual.Frozen }
+        val visual = vm.visual(target)
+        val inherited = visual as? PauseVisual.Inherited
+        val paused = visual is PauseVisual.Soft || visual is PauseVisual.Frozen
         var choosing by remember { mutableStateOf(false) }
         BottomBar(
-            primary = if (paused) PauseChoiceDefaults.RESUME else PauseChoiceDefaults.BUTTON,
-            primaryDanger = !paused,
-            onPrimary = { if (paused) vm.tap(target) else choosing = true },
+            primary = when (inherited?.source) {
+                PauseVisual.Inherited.ALL -> "Resume all"
+                PauseVisual.Inherited.PROJECT -> "Paused by project"
+                else -> if (paused) PauseChoiceDefaults.RESUME else PauseChoiceDefaults.BUTTON
+            },
+            primaryDanger = !paused && inherited == null,
+            onPrimary = {
+                when (inherited?.source) {
+                    PauseVisual.Inherited.ALL -> vm.tap(PauseTarget.All)
+                    PauseVisual.Inherited.PROJECT -> Unit
+                    else -> if (paused) vm.tap(target) else choosing = true
+                }
+            },
             onPrimaryHold = null,
             secondary = emptyList()
         )
