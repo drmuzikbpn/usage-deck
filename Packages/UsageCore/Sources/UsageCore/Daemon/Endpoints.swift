@@ -8,7 +8,7 @@ import Synchronization
 ///
 /// Pairing hands over `addrs` in the daemon's preferred order (LAN IP, `<host>.local`, tailnet
 /// IP). Each request tries the address that worked last time first and then the rest in their
-/// original order, so a phone that walks from Wi-Fi onto a VPN finds the device again without
+/// original order, so a phone that walks from Wi-Fi onto a private network finds the device again without
 /// re-pairing. The same certificate pin applies to every address.
 public final class Endpoints: Sendable {
     private struct State {

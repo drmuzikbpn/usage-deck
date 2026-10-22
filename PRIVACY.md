@@ -4,7 +4,7 @@ Usage Deck collects nothing.
 
 - **No accounts, no analytics, no tracking, no ads.** The app has no server of its own.
 - **It talks only to your own devices.** The iPhone app connects to the `claude-usage` daemons
-  you pair it with — on your local network, or over your own VPN — and to nothing else. It
+  you pair it with — on your local network, or over a private network you run, such as Tailscale — and to nothing else. It
   never contacts Anthropic. The Apple Watch app talks only to your iPhone.
 - **What stays on your iPhone:** the list of paired devices, your settings, and each device's
   access token, which is kept in the iPhone Keychain (this device only; not synced to iCloud,
