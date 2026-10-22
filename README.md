@@ -60,7 +60,7 @@ Pairing happens over HTTPS pinned to the computer's own certificate, and the QR 
 code that expires after five minutes — it never contains your access token. When you re-pair a
 device and the code carries a different certificate from the one you paired, the app says so
 before it replaces anything: continue only if you ran `claude-usage pair` on that device yourself. Your iPhone and the
-device need to be on the same Wi-Fi, or on the same VPN (Tailscale works) when you are away.
+device need to be on the same Wi-Fi, or on the same private network, such as Tailscale, when you are away.
 
 The Apple Watch app needs no setup: it gets everything from the iPhone, never from the device
 directly.

@@ -108,7 +108,7 @@ struct PairingScreen: View {
             Text(LocalizedStringKey(
                 "1. Install claude-usage (see GitHub).\n2. Run `claude-usage install --lan`.\n"
                     + "3. Run `claude-usage pair` and scan its QR code.\n\n"
-                    + "Your iPhone and the device need the same Wi-Fi, or the same VPN when you are away."
+                    + "Your iPhone and the device need the same Wi-Fi, or the same private network, such as Tailscale, when you are away."
             ))
             .font(DeckFont.text(13))
             .foregroundStyle(DeckColor.fg)
