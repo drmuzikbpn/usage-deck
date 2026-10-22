@@ -308,7 +308,7 @@ struct PinnedTrustTests {
         #expect(PinnedTrust(fingerprint: "ABC").fingerprint == "abc")
     }
 
-    @Test func refusesEveryChallengeThatIsNotServerTrust() async {
+    @Test func refusesEveryChallengeThatIsNotServerTrust() async throws {
         let space = URLProtectionSpace(
             host: "x.test",
             port: 443,
@@ -327,6 +327,20 @@ struct PinnedTrustTests {
         let (disposition, credential) = await PinnedTrust(fingerprint: "a").urlSession(URLSession.shared, didReceive: challenge)
         #expect(disposition == .cancelAuthenticationChallenge)
         #expect(credential == nil)
+        // The task-level challenge gets the same answer.
+        let task = try URLSession.shared.dataTask(with: #require(URL(string: "https://x.test/")))
+        let (taskDisposition, taskCredential) = await PinnedTrust(fingerprint: "a")
+            .urlSession(URLSession.shared, task: task, didReceive: challenge)
+        #expect(taskDisposition == .cancelAuthenticationChallenge)
+        #expect(taskCredential == nil)
+    }
+
+    /// iOS 26 sends a `bytes(for:)` task's server-trust challenge to the task-level method only.
+    /// Without it the system's trust evaluation refused the self-signed daemon and every first
+    /// pairing failed as "certificate changed".
+    @Test func answersTaskLevelChallenges() {
+        let selector = #selector(URLSessionTaskDelegate.urlSession(_:task:didReceive:completionHandler:))
+        #expect(PinnedTrust(fingerprint: "a").responds(to: selector))
     }
 }
 
