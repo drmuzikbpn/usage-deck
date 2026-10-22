@@ -76,6 +76,22 @@ public final class PinnedTrust: NSObject, URLSessionTaskDelegate, Sendable {
         _: URLSession,
         didReceive challenge: URLAuthenticationChallenge
     ) async -> (URLSession.AuthChallengeDisposition, URLCredential?) {
+        answer(challenge)
+    }
+
+    /// The same answer at task level. iOS 26 delivers a task's server-trust challenge here when
+    /// the delegate is a task delegate (`bytes(for:)`), never consulting the session-level method
+    /// above; without this the system's own trust evaluation ran and refused every self-signed
+    /// daemon, which the app read as "certificate changed" on the very first pairing.
+    public func urlSession(
+        _: URLSession,
+        task _: URLSessionTask,
+        didReceive challenge: URLAuthenticationChallenge
+    ) async -> (URLSession.AuthChallengeDisposition, URLCredential?) {
+        answer(challenge)
+    }
+
+    private func answer(_ challenge: URLAuthenticationChallenge) -> (URLSession.AuthChallengeDisposition, URLCredential?) {
         guard let trust = accepted(challenge) else {
             if challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust {
                 PinRejections.shared.note(pin: fingerprint)
