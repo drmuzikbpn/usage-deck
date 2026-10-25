@@ -207,6 +207,52 @@ describe('LimitsPoller.observe (§23.36)', () => {
     expect(byId(h.poller, 'session')).toBeUndefined();
   });
 
+  it('a plan change drops weekly_all mid-window: a session whose own reading moves is believed (§23.64)', () => {
+    const h = harness({ upstream: false });
+    const window1 = EPOCH + 3 * 3_600_000;
+    const live = '11111111-1111-4111-8111-111111111111';
+    const idle = '22222222-2222-4222-8222-222222222222';
+    const fresh = '33333333-3333-4333-8333-333333333333';
+    const tagged = (sessionId: string, fiveHour: number, sevenDay: number) => ({
+      ...rateLimits(fiveHour, sevenDay, window1),
+      session_id: sessionId,
+    });
+
+    h.poller.observe(tagged(live, 10, 99));
+    h.poller.observe(tagged(idle, 10, 99));
+    // The upgrade: the live session's next response reports far less of the bigger budget.
+    h.timers.clock += 1_000;
+    h.poller.observe(tagged(live, 10, 1));
+    expect(byId(h.poller, 'weekly_all')).toMatchObject({ percent: 1, stale: false });
+    // The idle session re-renders its unchanged pre-upgrade numbers: an old reading, even
+    // though it is higher. Nor does an untagged one raise the dropped window.
+    h.poller.observe(tagged(idle, 10, 99));
+    expect(byId(h.poller, 'weekly_all')?.percent).toBe(1);
+    h.poller.observe(rateLimits(10, 99, window1));
+    expect(byId(h.poller, 'weekly_all')?.percent).toBe(1);
+    // The live session's unchanged re-render refreshes asOf; its next response climbs.
+    h.timers.clock += 1_000;
+    h.poller.observe(tagged(live, 10, 1));
+    expect(byId(h.poller, 'weekly_all')?.asOf).toBe(new Date(EPOCH + 2_000).toISOString());
+    h.poller.observe(tagged(live, 11, 2));
+    expect(byId(h.poller, 'weekly_all')?.percent).toBe(2);
+
+    // A session first seen after the drop is not believed on its first lower reading
+    // (it could be an idle one just resumed), only once its own number moves.
+    const h2 = harness({ upstream: false });
+    h2.poller.observe({ ...rateLimits(10, 99, window1), session_id: live });
+    h2.poller.observe({ ...rateLimits(10, 1, window1), session_id: fresh });
+    expect(byId(h2.poller, 'weekly_all')?.percent).toBe(99);
+    h2.poller.observe({ ...rateLimits(10, 2, window1), session_id: fresh });
+    expect(byId(h2.poller, 'weekly_all')?.percent).toBe(2);
+
+    // Untagged bodies (an older client) and non-UUID ids keep the plain §23.40 rule.
+    const h3 = harness({ upstream: false });
+    h3.poller.observe({ ...rateLimits(10, 99, window1), session_id: 'nope' });
+    h3.poller.observe({ ...rateLimits(10, 1, window1), session_id: 'nope' });
+    expect(byId(h3.poller, 'weekly_all')?.percent).toBe(99);
+  });
+
   it(`an observation expires after OBSERVATION_TTL_MS`, () => {
     const h = harness();
     h.poller.observe(rateLimits(20, 30));
@@ -363,6 +409,21 @@ describe('LimitsPoller.observe (§23.36)', () => {
     expect(byId(after.poller, 'weekly_all')?.percent).toBe(86);
   });
 
+  it('a dropped window stays dropped across a restart (§23.42, §23.64)', async () => {
+    const configDir = mkdtempSync(join(tmpdir(), 'cu-observed-'));
+    const live = '55555555-5555-4555-8555-555555555555';
+    const before = harness({ configDir, upstream: false });
+    before.poller.start();
+    before.poller.observe({ ...rateLimits(10, 99), session_id: live });
+    before.timers.clock += 1_000;
+    before.poller.observe({ ...rateLimits(10, 1), session_id: live });
+    before.poller.stop();
+    const after = harness({ configDir, upstream: false, startAt: 2_000 });
+    // An idle session's pre-upgrade numbers, first seen by the new process.
+    after.poller.observe({ ...rateLimits(10, 99), session_id: '66666666-6666-4666-8666-666666666666' });
+    expect(byId(after.poller, 'weekly_all')?.percent).toBe(1);
+  });
+
   it('polls upstream at most hourly while observations are fresh, adaptive again after', async () => {
     const h = harness();
     h.poller.start();
@@ -452,13 +513,23 @@ function observeHarness() {
   };
 }
 
-const statuslineInput = (limits: unknown) => JSON.stringify({ session_id: 's1', model: { id: 'x' }, rate_limits: limits });
+const SL_SESSION = '44444444-4444-4444-8444-444444444444';
+const statuslineInput = (limits: unknown, sessionId: string = SL_SESSION) =>
+  JSON.stringify({ session_id: sessionId, model: { id: 'x' }, rate_limits: limits });
 
 describe('claude-usage observe', () => {
   it('POSTs rate_limits with the bearer token', async () => {
     const h = observeHarness();
     expect(await h.run(statuslineInput(rateLimits(10, 52)))).toBe(0);
-    expect(h.posts).toEqual([{ path: OBSERVE_PATH, body: rateLimits(10, 52), token: 'test-bearer-token' }]);
+    expect(h.posts).toEqual([
+      { path: OBSERVE_PATH, body: { ...rateLimits(10, 52), session_id: SL_SESSION }, token: 'test-bearer-token' },
+    ]);
+  });
+
+  it('tags the body with the session id only when it is a UUID (§23.64)', async () => {
+    const h = observeHarness();
+    await h.run(statuslineInput(rateLimits(10, 52), 's1'));
+    expect(h.posts[0]?.body).toEqual(rateLimits(10, 52));
   });
 
   it('does nothing without rate_limits, or with unparseable stdin', async () => {

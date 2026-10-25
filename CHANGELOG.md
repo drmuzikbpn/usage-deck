@@ -36,6 +36,10 @@ All notable changes to this project are documented here. Format: [Keep a Changel
   private data.
 
 ### Fixed
+- After a plan upgrade, `weekly_all` stayed at the old plan's percentage until the weekly
+  reset: the daemon refused any lower reading inside a window. `observe` now sends the
+  session id, and a session whose own number changed is believed in either direction
+  (§23.64).
 - An auto-update could leave the daemon stopped on macOS: the restart is a `launchctl
   kickstart -k` issued from inside the job being restarted. A detached watchdog now relaunches
   the job if no process is running within 90 s (§23.50). If a Mac is down after updating to

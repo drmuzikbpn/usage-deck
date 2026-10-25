@@ -3,6 +3,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { writeJsonFile } from '../config.js';
+import { isSessionId } from '../sessions/validate.js';
 import { defaultFetch, fetchLimits, type FetchLike } from './client.js';
 import { normalizeLimits } from './normalize.js';
 import {
@@ -60,6 +61,15 @@ export const OBSERVED_UPSTREAM_INTERVAL_MS = 3_600_000;
  */
 export const SAME_WINDOW_TOLERANCE_MS = 1_800_000;
 
+/** §23.64: how long a session's last reading is remembered, and how many sessions at most. */
+export const SESSION_READING_TTL_MS = 24 * 3_600_000;
+const MAX_SESSION_READINGS = 256;
+
+interface SessionReading {
+  win: ObservedWindow;
+  movedAt: number | undefined;
+}
+
 /** Statusline window → the limit id it feeds, in the order a statusline-only body lists them. */
 const OBSERVED_WINDOWS: ReadonlyArray<{ key: string; id: string; kind: string; group: string }> = [
   { key: 'five_hour', id: 'session', kind: 'session', group: 'session' },
@@ -73,13 +83,35 @@ interface Observation {
   resetsAt: string | null;
   resetsAtMs: number | null;
   observedAt: number;
+  /** §23.64: when the posting session's own number last changed; absent when unknown. */
+  movedAt?: number;
+  /** §23.64: this window has dropped (a plan change); unmoved readings may no longer raise it. */
+  dropped?: boolean;
+}
+
+type ObservedWindow = Omit<Observation, 'observedAt' | 'movedAt' | 'dropped'>;
+
+/**
+ * §23.64: when this session's number for the window last changed. A change from its own
+ * previous reading in the same window is `now`; an unchanged one keeps its earlier time; a
+ * session's first reading, or its first in a new window, is of unknown age.
+ */
+function movedAtOf(previous: SessionReading | undefined, win: ObservedWindow, now: number): number | undefined {
+  if (previous === undefined || !sameWindow(previous.win, win)) return undefined;
+  return win.utilization === previous.win.utilization ? previous.movedAt : now;
+}
+
+/** §23.40: both readings name a `resets_at`, within `SAME_WINDOW_TOLERANCE_MS` of each other. */
+function sameWindow(a: ObservedWindow | undefined, b: ObservedWindow): boolean {
+  if (a === undefined || a.resetsAtMs === null || b.resetsAtMs === null) return false;
+  return Math.abs(a.resetsAtMs - b.resetsAtMs) <= SAME_WINDOW_TOLERANCE_MS;
 }
 
 /**
  * One statusline window, validated field by field; `null` when it is not usable.
  * `used_percentage` must be a finite 0–100; `resets_at` epoch seconds, an ISO string, or absent.
  */
-function parseObservedWindow(value: unknown): Omit<Observation, 'observedAt'> | null {
+function parseObservedWindow(value: unknown): ObservedWindow | null {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
   const rec = value as Record<string, unknown>;
   const pct = rec['used_percentage'];
@@ -198,7 +230,14 @@ export function readCachedObservations(configDir: string): Map<string, Observati
       const observedAt = typeof rec['observedAt'] === 'string' ? Date.parse(rec['observedAt']) : NaN;
       if (!OBSERVED_WINDOWS.some((w) => w.id === id) || Number.isNaN(observedAt)) continue;
       const win = parseObservedWindow(rec);
-      if (win !== null) out.set(id as string, { ...win, observedAt });
+      if (win === null) continue;
+      const movedAt = typeof rec['movedAt'] === 'string' ? Date.parse(rec['movedAt']) : NaN;
+      out.set(id as string, {
+        ...win,
+        observedAt,
+        ...(Number.isNaN(movedAt) ? {} : { movedAt }),
+        ...(rec['dropped'] === true ? { dropped: true } : {}),
+      });
     }
   } catch {
     // no cache, or not ours to read: start with none
@@ -361,6 +400,8 @@ export class LimitsPoller {
   private successStreak = 0;
   /** §23.36: the latest statusline observation per limit id. In memory only. */
   private observed = new Map<string, Observation>();
+  /** §23.64: each session's own last reading per limit id, to see whose numbers move. */
+  private sessionReadings = new Map<string, { seenAt: number; byId: Map<string, SessionReading> }>();
   /** Epoch ms before which upstream asked not to be called again (§23.32). */
   private rateLimitedUntil: number | null = null;
   private readonly configDir: string | null;
@@ -460,7 +501,7 @@ export class LimitsPoller {
       return { accepted: false, reason: 'rate_limits must be a JSON object' };
     }
     const rec = input as Record<string, unknown>;
-    const parsed: Array<[string, Omit<Observation, 'observedAt'>]> = [];
+    const parsed: Array<[string, ObservedWindow]> = [];
     for (const w of OBSERVED_WINDOWS) {
       if (!(w.key in rec)) continue;
       const win = parseObservedWindow(rec[w.key]);
@@ -469,10 +510,16 @@ export class LimitsPoller {
     }
     if (parsed.length === 0) return { accepted: false, reason: 'rate_limits has no five_hour or seven_day window' };
     const observedAt = this.now();
+    const sessionId = isSessionId(rec['session_id']) ? rec['session_id'] : null;
+    const own = sessionId === null ? undefined : this.sessionReadings.get(sessionId)?.byId;
+    const readings: Array<[string, SessionReading]> = [];
     for (const [id, win] of parsed) {
-      if (this.isOlderReading(this.observed.get(id), win, observedAt)) continue;
-      this.observed.set(id, { ...win, observedAt });
+      const movedAt = movedAtOf(own?.get(id), win, observedAt);
+      readings.push([id, { win, movedAt }]);
+      const next = this.nextObservation(this.observed.get(id), win, movedAt, observedAt);
+      if (next !== null) this.observed.set(id, next);
     }
+    if (sessionId !== null) this.rememberSessionReadings(sessionId, readings, observedAt);
     this.notifyIfChanged();
     this.scheduleObservationExpiry();
     return { accepted: true };
@@ -481,17 +528,46 @@ export class LimitsPoller {
   /**
    * §23.40: every open session posts its statusline, and an idle one re-renders with the
    * numbers from its last model response — possibly hours old. Arrival order says nothing
-   * about which reading is newer, but the data does: inside one window usage only climbs,
-   * and a later window supersedes an earlier one. So a reading from a window that has
-   * already reset, from an earlier window than the one held, or lower than the one held for
-   * the same window, is an old reading and is ignored.
+   * about which reading is newer, but the data does: a later window supersedes an earlier
+   * one, and inside one window usage only climbs. So a reading from an earlier window than
+   * the one held, or lower than the one held for the same window, is an old reading and is
+   * ignored; `null` means "keep the held one".
+   *
+   * §23.64: except that usage does not only climb — a plan upgrade drops it mid-window. A
+   * session's own number changes only when it got a new model response, so the reading
+   * whose session moved most recently is the newest there is, in either direction. Once a
+   * window has dropped, a reading whose session has not moved since cannot raise it again.
    */
-  private isOlderReading(held: Observation | undefined, next: Omit<Observation, 'observedAt'>, now: number): boolean {
-    if (held === undefined || held.resetsAtMs === null || next.resetsAtMs === null) return false;
-    if (held.resetsAtMs <= now) return false;
-    if (next.resetsAtMs < held.resetsAtMs - SAME_WINDOW_TOLERANCE_MS) return true;
-    const sameWindow = Math.abs(next.resetsAtMs - held.resetsAtMs) <= SAME_WINDOW_TOLERANCE_MS;
-    return sameWindow && next.utilization < held.utilization;
+  private nextObservation(
+    held: Observation | undefined,
+    win: ObservedWindow,
+    movedAt: number | undefined,
+    now: number,
+  ): Observation | null {
+    const fresh: Observation = { ...win, observedAt: now, ...(movedAt === undefined ? {} : { movedAt }) };
+    if (held === undefined || held.resetsAtMs === null || win.resetsAtMs === null || held.resetsAtMs <= now) return fresh;
+    if (win.resetsAtMs < held.resetsAtMs - SAME_WINDOW_TOLERANCE_MS) return null;
+    if (!sameWindow(held, win)) return fresh;
+    if (movedAt !== undefined && (held.movedAt === undefined || movedAt >= held.movedAt)) {
+      const dropped = held.dropped === true || win.utilization < held.utilization;
+      return dropped ? { ...fresh, dropped } : fresh;
+    }
+    if (held.dropped === true || win.utilization < held.utilization) return null;
+    return fresh;
+  }
+
+  /** §23.64: keep each session's latest reading, bounded in age and count. */
+  private rememberSessionReadings(sessionId: string, readings: ReadonlyArray<[string, SessionReading]>, now: number): void {
+    const entry = this.sessionReadings.get(sessionId) ?? { seenAt: now, byId: new Map<string, SessionReading>() };
+    for (const [id, reading] of readings) entry.byId.set(id, reading);
+    entry.seenAt = now;
+    this.sessionReadings.delete(sessionId);
+    this.sessionReadings.set(sessionId, entry);
+    for (const [key, value] of this.sessionReadings) {
+      if (this.sessionReadings.size > MAX_SESSION_READINGS || now - value.seenAt >= SESSION_READING_TTL_MS) {
+        this.sessionReadings.delete(key);
+      }
+    }
   }
 
   private isFresh(obs: Observation, now: number): boolean {
@@ -763,6 +839,8 @@ export class LimitsPoller {
         used_percentage: obs.utilization,
         resets_at: obs.resetsAt,
         observedAt: new Date(obs.observedAt).toISOString(),
+        ...(obs.movedAt === undefined ? {} : { movedAt: new Date(obs.movedAt).toISOString() }),
+        ...(obs.dropped === true ? { dropped: true } : {}),
       })),
     };
   }
