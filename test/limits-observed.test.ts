@@ -409,6 +409,37 @@ describe('LimitsPoller.observe (§23.36)', () => {
     expect(byId(after.poller, 'weekly_all')?.percent).toBe(86);
   });
 
+  it('a plan upgrade that starts an earlier-resetting window: the moved session wins (§23.65)', () => {
+    const h = harness({ upstream: false });
+    const oldWeek = EPOCH + 5 * 86_400_000;
+    const newWeek = EPOCH + 2 * 86_400_000;
+    const live = '77777777-7777-4777-8777-777777777777';
+    const idle = '88888888-8888-4888-8888-888888888888';
+    const body = (sessionId: string, sevenDay: number, resetMs: number) => ({
+      seven_day: { used_percentage: sevenDay, resets_at: secs(resetMs) },
+      session_id: sessionId,
+    });
+
+    h.poller.observe(body(live, 99, oldWeek));
+    h.poller.observe(body(idle, 99, oldWeek));
+    h.timers.clock += 1_000;
+    h.poller.observe(body(live, 1, newWeek));
+    expect(byId(h.poller, 'weekly_all')).toMatchObject({ percent: 1, resetsAt: new Date(newWeek).toISOString() });
+    // The idle session's old, later-resetting week does not come back…
+    h.poller.observe(body(idle, 99, oldWeek));
+    expect(byId(h.poller, 'weekly_all')?.percent).toBe(1);
+    // …nor does an untagged, unmoved one; the live session keeps climbing.
+    h.poller.observe({ seven_day: { used_percentage: 99, resets_at: secs(oldWeek) } });
+    expect(byId(h.poller, 'weekly_all')?.percent).toBe(1);
+    h.poller.observe(body(live, 2, newWeek));
+    expect(byId(h.poller, 'weekly_all')?.percent).toBe(2);
+
+    // When the new week resets, the next window is taken from anyone, as before.
+    h.timers.clock = newWeek - EPOCH;
+    h.poller.observe({ seven_day: { used_percentage: 0, resets_at: secs(newWeek + 7 * 86_400_000) } });
+    expect(byId(h.poller, 'weekly_all')?.percent).toBe(0);
+  });
+
   it('a dropped window stays dropped across a restart (§23.42, §23.64)', async () => {
     const configDir = mkdtempSync(join(tmpdir(), 'cu-observed-'));
     const live = '55555555-5555-4555-8555-555555555555';

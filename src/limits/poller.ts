@@ -85,20 +85,21 @@ interface Observation {
   observedAt: number;
   /** §23.64: when the posting session's own number last changed; absent when unknown. */
   movedAt?: number;
-  /** §23.64: this window has dropped (a plan change); unmoved readings may no longer raise it. */
+  /** §23.64: a move overruled §23.40 here (a plan change); unmoved readings may not undo it. */
   dropped?: boolean;
 }
 
 type ObservedWindow = Omit<Observation, 'observedAt' | 'movedAt' | 'dropped'>;
 
 /**
- * §23.64: when this session's number for the window last changed. A change from its own
- * previous reading in the same window is `now`; an unchanged one keeps its earlier time; a
- * session's first reading, or its first in a new window, is of unknown age.
+ * §23.64/§23.65: when this session's reading last changed — its number or its window. A
+ * change from its own previous reading is `now`; an unchanged one keeps its earlier time; a
+ * session's first reading is of unknown age.
  */
 function movedAtOf(previous: SessionReading | undefined, win: ObservedWindow, now: number): number | undefined {
-  if (previous === undefined || !sameWindow(previous.win, win)) return undefined;
-  return win.utilization === previous.win.utilization ? previous.movedAt : now;
+  if (previous === undefined) return undefined;
+  const unchanged = win.utilization === previous.win.utilization && win.resetsAtMs === previous.win.resetsAtMs;
+  return unchanged ? previous.movedAt : now;
 }
 
 /** §23.40: both readings name a `resets_at`, within `SAME_WINDOW_TOLERANCE_MS` of each other. */
@@ -533,10 +534,11 @@ export class LimitsPoller {
    * the one held, or lower than the one held for the same window, is an old reading and is
    * ignored; `null` means "keep the held one".
    *
-   * §23.64: except that usage does not only climb — a plan upgrade drops it mid-window. A
-   * session's own number changes only when it got a new model response, so the reading
-   * whose session moved most recently is the newest there is, in either direction. Once a
-   * window has dropped, a reading whose session has not moved since cannot raise it again.
+   * §23.64/§23.65: except that a plan upgrade breaks both — it drops usage mid-window, or
+   * starts a new window that resets *earlier*. A session's own reading changes only when it
+   * got a new model response, so the reading whose session moved most recently is the
+   * newest there is, whatever its number or window. Once a move has overruled §23.40
+   * (`dropped`), a reading whose session has not moved since cannot overrule it back.
    */
   private nextObservation(
     held: Observation | undefined,
@@ -546,13 +548,14 @@ export class LimitsPoller {
   ): Observation | null {
     const fresh: Observation = { ...win, observedAt: now, ...(movedAt === undefined ? {} : { movedAt }) };
     if (held === undefined || held.resetsAtMs === null || win.resetsAtMs === null || held.resetsAtMs <= now) return fresh;
-    if (win.resetsAtMs < held.resetsAtMs - SAME_WINDOW_TOLERANCE_MS) return null;
-    if (!sameWindow(held, win)) return fresh;
+    const same = sameWindow(held, win);
+    const earlier = win.resetsAtMs < held.resetsAtMs - SAME_WINDOW_TOLERANCE_MS;
+    const refused = earlier || (same && win.utilization < held.utilization);
     if (movedAt !== undefined && (held.movedAt === undefined || movedAt >= held.movedAt)) {
-      const dropped = held.dropped === true || win.utilization < held.utilization;
+      const dropped = refused || (same && held.dropped === true);
       return dropped ? { ...fresh, dropped } : fresh;
     }
-    if (held.dropped === true || win.utilization < held.utilization) return null;
+    if (held.dropped === true || refused) return null;
     return fresh;
   }
 

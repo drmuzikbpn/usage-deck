@@ -1981,3 +1981,22 @@ Upstream was rate-limited, so nothing could correct it before the weekly reset.
 **Test-first, per Part III:** `test/limits-observed.test.ts`. Mutation-checked: always
 treating a reading as moved, ignoring `dropped`, requiring a strictly newer move, never
 accepting a move, and not persisting or restoring `dropped` each fail a named test.
+
+### §23.65 …or starts a week that resets earlier (2026-10-25)
+
+Amends §23.64. Live data after the Max 20 upgrade showed the upgrade did not keep the old
+week: the statusline's `seven_day` now resets 2026-10-27T03:00Z, earlier than the held
+2026-10-29T06:00Z. §23.40 refuses an earlier window outright, so §23.64's same-window
+exception never applied. A daemon restart cleared it only because the held observation had
+expired and was not persisted.
+
+- **A move is any change.** A session's reading moves when its `used_percentage` *or* its
+  `resets_at` differs from its own previous reading.
+- **The newest move wins, whatever the window.** A moved reading at or after the held
+  `movedAt` replaces it even when its window resets earlier. A move that §23.40 would have
+  refused — an earlier window, or lower in the same window — sets `dropped`. While `dropped`,
+  unmoved readings are refused, including an idle session's later-resetting old week. Once
+  the held window resets, any reading is taken again, as before.
+
+**Test-first, per Part III:** `test/limits-observed.test.ts`. Fails against §23.64's code.
+Mutation-checked: limiting `dropped` to same-window moves fails a named test.
