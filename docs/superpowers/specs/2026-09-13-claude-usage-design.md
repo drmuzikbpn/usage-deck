@@ -1999,4 +1999,5 @@ expired and was not persisted.
   the held window resets, any reading is taken again, as before.
 
 **Test-first, per Part III:** `test/limits-observed.test.ts`. Fails against §23.64's code.
-Mutation-checked: limiting `dropped` to same-window moves fails a named test.
+Mutation-checked: limiting `dropped` to same-window moves, and ignoring a `resets_at`-only
+change, each fail a named test.
