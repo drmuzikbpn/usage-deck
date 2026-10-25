@@ -1953,3 +1953,31 @@ Extends §23.47/§23.52. `DELETE /v1/pair/code` (bearer + loopback) voids the li
 `claude-usage pair` calls it whenever it ends without the phone pairing. The per-source failure
 table holds at most 1024 sources (a new source beyond that is `rate_limited`) and is swept at
 most every 5 s. **Test-first:** `test/server/pairing.test.ts`, `test/install/pair.test.ts`.
+
+### §23.64 A plan upgrade drops usage mid-window (2026-10-25)
+
+Amends §23.40. After an upgrade from Max 5 to Max 20, Claude Code's `/usage` read the week
+at 1% while the daemon served 99%. §23.40's rule "usage only climbs inside a window" refused
+every lower `seven_day` reading, because the window's `resets_at` did not change. The held
+observation then went quiet, and `weekly_all` fell back to the stale 99% upstream row.
+Upstream was rate-limited, so nothing could correct it before the weekly reset.
+
+- **The client tags the body.** `claude-usage observe` adds the statusline's `session_id`
+  to the `POST /v1/limits/observed` body, but only when it is a UUID. An older daemon
+  ignores the extra key.
+- **Readings are aged by their own session.** A session's number changes only when it got a
+  new model response. The daemon keeps each session's last reading per limit id, in memory,
+  for at most 256 sessions and 24 h. A reading that differs from its own session's previous
+  reading in the same window gets `movedAt = now`. An unchanged one keeps its previous
+  `movedAt`. A session's first reading, or its first in a new window, has no `movedAt`.
+- **Newest move wins.** In the held window, a reading whose `movedAt` is at or after the
+  held one's replaces it, in either direction. A move below the held reading marks the
+  window `dropped`. Readings without a newer move keep §23.40's rule, but cannot raise a
+  `dropped` window, so an idle session's pre-upgrade 99% cannot return. Earlier windows are
+  still refused, and later ones still win.
+- **Persisted.** `movedAt` and `dropped` are written with the §23.42 observations and
+  restored with them.
+
+**Test-first, per Part III:** `test/limits-observed.test.ts`. Mutation-checked: always
+treating a reading as moved, ignoring `dropped`, requiring a strictly newer move, never
+accepting a move, and not persisting or restoring `dropped` each fail a named test.

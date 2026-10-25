@@ -13,6 +13,7 @@ import { join } from 'node:path';
 import { DaemonClient } from './clients/http.js';
 import { loadConfig, resolveConfigDir, writeJsonFile } from './config.js';
 import { OBSERVE_PATH } from './limits/types.js';
+import { isSessionId } from './sessions/validate.js';
 
 export { OBSERVE_PATH };
 
@@ -55,7 +56,11 @@ export async function runObserve(io: ObserveIO = {}): Promise<number> {
     // API-key sessions have no rate_limits at all; nothing to forward.
     if (typeof limits !== 'object' || limits === null || Array.isArray(limits)) return 0;
 
-    const payload = JSON.stringify(limits);
+    // §23.64: the session id lets the daemon tell a live session's genuine drop (a plan
+    // change) from an idle one's old numbers. UUIDs only; anything else goes untagged.
+    const sessionId = (parsed as Record<string, unknown>)['session_id'];
+    const body = isSessionId(sessionId) ? { ...limits, session_id: sessionId } : limits;
+    const payload = JSON.stringify(body);
     const previous = lastSent(configDir);
     if (previous !== null && previous.payload === payload && now() - previous.sentAt < OBSERVE_DEDUPE_MS) return 0;
 
@@ -65,7 +70,7 @@ export async function runObserve(io: ObserveIO = {}): Promise<number> {
       (async (path, body, bearer) => {
         await new DaemonClient({ configDir, token: bearer, timeoutMs: OBSERVE_TIMEOUT_MS }).post(path, body);
       });
-    await post(OBSERVE_PATH, limits, token);
+    await post(OBSERVE_PATH, body, token);
     // Recorded only after the daemon took it, so a down daemon is retried on the next render.
     writeJsonFile(join(configDir, OBSERVE_STATE_FILE), { sentAt: now(), payload });
   } catch {
