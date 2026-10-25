@@ -440,6 +440,22 @@ describe('LimitsPoller.observe (§23.36)', () => {
     expect(byId(h.poller, 'weekly_all')?.percent).toBe(0);
   });
 
+  it('a session whose window changes but whose percent does not has still moved (§23.65)', () => {
+    const h = harness({ upstream: false });
+    const oldWeek = EPOCH + 5 * 86_400_000;
+    const newWeek = EPOCH + 2 * 86_400_000;
+    const live = '99999999-9999-4999-8999-999999999999';
+    const body = (sevenDay: number, resetMs: number) => ({
+      seven_day: { used_percentage: sevenDay, resets_at: secs(resetMs) },
+      session_id: live,
+    });
+
+    h.poller.observe(body(5, oldWeek));
+    h.timers.clock += 1_000;
+    h.poller.observe(body(5, newWeek));
+    expect(byId(h.poller, 'weekly_all')).toMatchObject({ percent: 5, resetsAt: new Date(newWeek).toISOString() });
+  });
+
   it('a dropped window stays dropped across a restart (§23.42, §23.64)', async () => {
     const configDir = mkdtempSync(join(tmpdir(), 'cu-observed-'));
     const live = '55555555-5555-4555-8555-555555555555';
