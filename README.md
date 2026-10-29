@@ -11,6 +11,8 @@ and on your phone and wrist.**
 The open-source `claude-usage` service, plus the Usage Deck dashboards for iPhone, Apple Watch
 and Android.
 
+**[Get Usage Deck free on the App Store](https://apps.apple.com/us/app/usage-deck/id6818383053)** — iPhone + Apple Watch
+
 [![CI](https://github.com/drmuzikbpn/usage-deck/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/drmuzikbpn/usage-deck/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![macOS | Linux](https://img.shields.io/badge/runs%20on-macOS%20%7C%20Linux-555)
@@ -82,8 +84,8 @@ Remove everything again with `claude-usage uninstall`.
 ## Add your phone
 
 1. Get the app:
-   - **iPhone + Apple Watch** — *Usage Deck*, free on the App Store (in App Review now; the
-     link goes here once it is live). The watch app comes with it. No computer yet? Tap
+   - **iPhone + Apple Watch** — *Usage Deck*, free [on the App Store](https://apps.apple.com/us/app/usage-deck/id6818383053). The watch app
+     comes with it. No computer yet? Tap
      **Try the demo**.
    - **Android** — a **dedicated-device dashboard**, not an everyday phone app: it is built to
      run as the kiosk launcher on a spare phone on your desk or wall (Device Owner, so it can

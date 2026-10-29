@@ -339,7 +339,7 @@ for when you are away from home.
 
 ### Get the app
 
-- **iPhone + Apple Watch:** **Usage Deck**, free on the App Store (in App Review now). The
+- **iPhone + Apple Watch:** **Usage Deck**, free [on the App Store](https://apps.apple.com/us/app/usage-deck/id6818383053). The
   watch app installs with it. No computer yet? Tap **Try the demo**.
 - **Android:** the **Usage Deck** dashboard, a kiosk build for a wall or desk phone. APKs are
   the `deck-` [pre-releases](https://github.com/drmuzikbpn/usage-deck/releases?q=deck-&expanded=true)
