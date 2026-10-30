@@ -32,9 +32,9 @@ You need a computer running Claude Code with the claude-usage daemon installed. 
 Usage Deck is an independent app, not affiliated with Anthropic.
 ```
 
-- **Assets:** `docs/images/play/` has the 512 px icon and phone screenshots. Each screenshot is the
-  emulator against the fake daemon, so every name and number is synthetic. The 1024×500 feature
-  graphic is still to make.
+- **Assets:** `docs/images/play/` has the 512 px icon, the 1024×500 feature graphic and phone
+  screenshots. The screenshots are the emulator running "Try the demo", so every name and number
+  is synthetic and the demo banner stays visible.
 - **Privacy policy:** <https://github.com/drmuzikbpn/usage-deck/blob/usage-android/PRIVACY.md>
 
 ## App content
