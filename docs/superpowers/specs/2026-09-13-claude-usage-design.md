@@ -2028,3 +2028,19 @@ change, each fail a named test.
   still carries the `# claude-usage menubar plugin` marker.
 
 **Tests:** `test/menubar.test.ts`, plus the uninstall case in `test/install/uninstall.test.ts`.
+
+### §23.67 A new week voids the scoped rows upstream can no longer update (2026-10-30)
+
+An account switch reset every limit. The statusline brought `session` and `weekly_all` to 0%
+at once, but `weekly_scoped:fable` stayed at 81%: only the usage endpoint carries scoped rows,
+and it was answering 429. That number belonged to a week that was over, and it held the
+overall status at `warn`.
+
+When the upstream snapshot is stale, and a fresh statusline `weekly_all` reading newer than
+`fetchedAt` names a `resets_at` outside `SAME_WINDOW_TOLERANCE_MS` of upstream's `weekly_all`
+row, every row the statusline cannot update is served with `percent`, `severity` and `resetsAt`
+as `null` and `stale: true`. It is the same treatment §23.40 gives a row whose window reset.
+A scoped limit on a different schedule can go unknown when `weekly_all` resets naturally while
+upstream is failing: unknown is honest, and the next successful poll restores it.
+
+**Tests:** `test/limits-observed.test.ts`.
