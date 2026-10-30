@@ -112,7 +112,7 @@ struct HomeEmptyView: View {
                     NoDevicesView(store: store)
                 case .connecting:
                     title(store.team.devices.count == 1 ? "Waiting for device" : "Waiting for devices")
-                    paragraph("Paired, but no data yet. Check the daemon is running and this iPhone is on its network (or on Tailscale).")
+                    paragraph("Paired, but no data yet. Check the daemon is running and this iPhone is on its local network.")
                     VStack(spacing: 6) {
                         // Devices that lost their pairing have their own card above.
                         ForEach(store.team.devices.filter { !$0.needsRepair }, id: \.id) { device in

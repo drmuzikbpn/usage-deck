@@ -30,7 +30,7 @@ public struct SetupCheck: Sendable, Equatable {
     /// install has none until a Claude Code session runs, which is neutral, not a failure.
     public static func evaluate(health: HealthDTO?, error: DaemonError?, limitsFresh: Bool) -> SetupCheck {
         guard let health else {
-            let fix = error?.needsRepair == true ? "Re-pair this device" : "Is the device awake and on this network (or on Tailscale)?"
+            let fix = error?.needsRepair == true ? "Re-pair this device" : "Is the device awake and on this local network?"
             return SetupCheck(items: [Item(id: "reachable", title: "Reachable", status: .failing, fix: fix)])
         }
         var items = [Item(id: "reachable", title: "Reachable", status: .ok, fix: nil)]
