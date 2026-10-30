@@ -62,6 +62,12 @@ function resets(iso: string | null, now: number): string {
 /** Single-quote for the plugin's `sh` script. */
 const shQuote = (s: string): string => `'${s.replace(/'/g, `'\\''`)}'`;
 
+/**
+ * A dropdown row with no action is drawn disabled, in faint grey that disappears on the
+ * translucent menu. `refresh=true` gives it one, so it gets the normal menu text colour.
+ */
+const info = (text: string): string => `${clean(text)} | refresh=true`;
+
 function action(label: string, plugin: string | null, args: readonly string[]): string {
   if (plugin === null) return `${label} | color=gray`;
   const params = args.map((a, i) => `param${i + 1}=${a}`).join(' ');
@@ -74,7 +80,7 @@ export function renderMenubar(state: MenubarState, now: number, plugin: string |
   if (!state.running) {
     lines.push('🔴 Claude ⏹');
     lines.push('---');
-    lines.push('claude-usage: stopped');
+    lines.push(info('claude-usage: stopped'));
     lines.push(action('Start daemon', plugin, ['service', 'start']));
   } else {
     const parts: string[] = [];
@@ -98,21 +104,21 @@ export function renderMenubar(state: MenubarState, now: number, plugin: string |
     const title = parts.length === 0 ? 'Claude …' : `${dot}${parts.join(' · ')}${stale ? ' ⚠︎' : ''}`;
     lines.push(clean(title));
     lines.push('---');
-    lines.push(clean(`claude-usage: running (${state.version === '' ? 'version unknown' : state.version})`));
-    if (summary === null) lines.push('🔴 Not answering');
-    lines.push(...menu.map(clean));
+    lines.push(info(`claude-usage: running (${state.version === '' ? 'version unknown' : state.version})`));
+    if (summary === null) lines.push(info('🔴 Not answering'));
+    lines.push(...menu.map(info));
     // Every other limit too: they count toward the title's dot, so it must be explainable here.
     for (const limit of summary?.limits.limits ?? []) {
       if ((HEADLINE_IDS as readonly string[]).includes(limit.id)) continue;
       const pct = limit.percent === null ? '?%' : `${limit.percent}%`;
       const label = limit.scope?.model ?? limit.id.replace(/^weekly_scoped:/, '');
       const dot = DOTS[summary?.status.byId[limit.id] ?? 'ok'];
-      lines.push(clean(`${dot}${label}: ${pct}${resets(limit.resetsAt, now)}${limit.stale === true ? ' ⚠︎' : ''}`));
+      lines.push(info(`${dot}${label}: ${pct}${resets(limit.resetsAt, now)}${limit.stale === true ? ' ⚠︎' : ''}`));
     }
     if (Number.isFinite(newest)) {
-      lines.push(`${stale ? '⚠︎ Stale: updated' : 'Updated'} ${ago(now - newest)}`);
+      lines.push(info(`${stale ? '⚠︎ Stale: updated' : 'Updated'} ${ago(now - newest)}`));
     } else if (parts.length > 0 && stale) {
-      lines.push('⚠︎ Stale reading');
+      lines.push(info('⚠︎ Stale reading'));
     }
     lines.push('---');
     lines.push(action('Stop daemon', plugin, ['service', 'stop']));
