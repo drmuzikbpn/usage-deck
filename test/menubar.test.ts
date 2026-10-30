@@ -291,6 +291,95 @@ describe('claude-usage menubar', () => {
 });
 
 describe('menubar --install / --uninstall', () => {
+  describe('starting the menu bar app at login', () => {
+    const APP = '/opt/apps/SwiftBar.app';
+    const install = async (
+      flags: string[],
+      opts: { confirm?: (q: string) => Promise<boolean>; exists?: string; addCode?: number; app?: string | null } = {},
+    ) => {
+      const calls: string[][] = [];
+      const c = capture();
+      const code = await runMenubar(['--install', '--dir', mkdtempSync(join(tmpdir(), 'swiftbar-')), ...flags], {
+        ...c.io,
+        configDir: tempConfigDir(),
+        nodePath: '/n',
+        binPath: '/b',
+        menuBarApp: opts.app === undefined ? APP : opts.app,
+        ...(opts.confirm === undefined ? {} : { confirm: opts.confirm }),
+        exec: async (file, args) => {
+          calls.push([file, ...args]);
+          const adding = args.join(' ').includes('make login item');
+          return { code: adding ? (opts.addCode ?? 0) : 0, stdout: adding ? '' : `${opts.exists ?? 'false'}\n`, stderr: '' };
+        },
+      });
+      return { code, calls, out: c.out() };
+    };
+
+    it('asks, then adds the app with its path as argv, never inside the script', async () => {
+      const questions: string[] = [];
+      const r = await install([], { confirm: async (q) => (questions.push(q), true) });
+      expect(r.code).toBe(0);
+      expect(questions).toEqual(['Start SwiftBar at login, so the menu bar item comes back after a restart?']);
+      const add = r.calls[1] ?? [];
+      expect(add[0]).toBe('/usr/bin/osascript');
+      expect(add.at(-1)).toBe(APP);
+      expect(add.slice(1, -1).join(' ')).not.toContain(APP);
+      expect(r.out).toContain('menubar: SwiftBar now starts at login');
+    });
+
+    it('adds nothing when the answer is no', async () => {
+      const r = await install([], { confirm: async () => false });
+      expect(r.calls).toHaveLength(1);
+      expect(r.out).not.toContain('starts at login');
+    });
+
+    it('does not ask when the app already starts at login', async () => {
+      let asked = false;
+      const r = await install([], { exists: 'true', confirm: async () => ((asked = true), true) });
+      expect(asked).toBe(false);
+      expect(r.calls).toHaveLength(1);
+      expect(r.out).toContain('menubar: SwiftBar already starts at login');
+    });
+
+    it('adds it without asking for --login-item', async () => {
+      const r = await install(['--login-item']);
+      expect(r.calls).toHaveLength(2);
+      expect(r.out).toContain('now starts at login');
+    });
+
+    it('never touches login items for --no-login-item', async () => {
+      let asked = false;
+      const r = await install(['--no-login-item'], { confirm: async () => ((asked = true), true) });
+      expect(asked).toBe(false);
+      expect(r.calls).toHaveLength(0);
+      expect(r.out).not.toContain('login');
+    });
+
+    it('with nobody at the terminal, runs nothing and says how', async () => {
+      const r = await install([]);
+      expect(r.calls).toHaveLength(0);
+      expect(r.out).toContain('menubar: to start SwiftBar at login, re-run with --login-item');
+    });
+
+    it('stays quiet when neither app is installed', async () => {
+      const r = await install([], { app: null, confirm: async () => true });
+      expect(r.calls).toHaveLength(0);
+      expect(r.out).not.toContain('login');
+    });
+
+    it('names xbar when xbar is the app', async () => {
+      const r = await install(['--login-item'], { app: '/opt/apps/xbar.app' });
+      expect(r.out).toContain('menubar: xbar now starts at login');
+    });
+
+    it('still succeeds when macOS refuses, and says where to do it', async () => {
+      const r = await install(['--login-item'], { addCode: 1 });
+      expect(r.code).toBe(0);
+      expect(r.out).toContain('could not add SwiftBar to your login items');
+      expect(r.out).toContain('System Settings > General > Login Items');
+    });
+  });
+
   it('writes an executable plugin that runs node and the current bin by absolute path', async () => {
     const configDir = tempConfigDir();
     const dir = mkdtempSync(join(tmpdir(), 'swiftbar-'));

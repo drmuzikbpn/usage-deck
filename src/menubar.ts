@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Even Seal Productions
-import { chmodSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-import { isAbsolute, join } from 'node:path';
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { basename, isAbsolute, join } from 'node:path';
 import { DaemonClient, isPidAlive, readDaemonInfo } from './clients/http.js';
 import { resolveConfigDir } from './config.js';
 import { HEADLINE_IDS, type SummaryBody } from './hook.js';
@@ -254,6 +254,10 @@ export interface MenubarIO {
   now?: number;
   nodePath?: string;
   binPath?: string;
+  /** Answers a yes/no question. Absent when nobody is at the terminal. */
+  confirm?: (question: string) => Promise<boolean>;
+  /** The menu-bar app to start at login. `null` when neither is installed. */
+  menuBarApp?: string | null;
 }
 
 /** What the plugin shows right now. Never throws: SwiftBar would show the stack instead. */
@@ -328,6 +332,46 @@ function flagValue(argv: readonly string[], name: string): string | undefined {
 }
 
 /** `claude-usage menubar [--install [--dir <d>] | --uninstall | --plugin <path>]`. */
+const MENU_BAR_APPS = ['/Applications/SwiftBar.app', '/Applications/xbar.app'];
+
+/** Each line takes the app's path or name as argv, so neither is parsed as AppleScript. */
+const LOGIN_ITEM_EXISTS = ['on run argv', 'tell application "System Events" to return exists login item (item 1 of argv)', 'end run'];
+const LOGIN_ITEM_ADD = [
+  'on run argv',
+  'tell application "System Events" to make login item at end with properties {path:(item 1 of argv)}',
+  'end run',
+];
+const osa = (lines: readonly string[], arg: string): string[] => [...lines.flatMap((line) => ['-e', line]), arg];
+
+/**
+ * The daemon comes back after a restart through launchd; the app that draws the menu does not
+ * unless it is a login item. An install has already succeeded by now, so nothing here fails it.
+ */
+async function offerLoginItem(argv: readonly string[], io: MenubarIO): Promise<void> {
+  if (argv.includes('--no-login-item')) return;
+  const app = io.menuBarApp !== undefined ? io.menuBarApp : (MENU_BAR_APPS.find((path) => existsSync(path)) ?? null);
+  if (app === null) return;
+  const name = basename(app, '.app');
+  const requested = argv.includes('--login-item');
+  if (!requested && io.confirm === undefined) {
+    io.stdout(`menubar: to start ${name} at login, re-run with --login-item\n`);
+    return;
+  }
+  const exec = io.exec ?? defaultExec;
+  const exists = await exec(OSASCRIPT_BIN, osa(LOGIN_ITEM_EXISTS, name));
+  if (exists.code === 0 && exists.stdout.trim() === 'true') {
+    io.stdout(`menubar: ${name} already starts at login\n`);
+    return;
+  }
+  if (!requested && !(await io.confirm?.(`Start ${name} at login, so the menu bar item comes back after a restart?`))) return;
+  const added = await exec(OSASCRIPT_BIN, osa(LOGIN_ITEM_ADD, app));
+  io.stdout(
+    added.code === 0
+      ? `menubar: ${name} now starts at login\n`
+      : `menubar: could not add ${name} to your login items; add it in System Settings > General > Login Items\n`,
+  );
+}
+
 export async function runMenubar(argv: readonly string[], io: MenubarIO): Promise<number> {
   const configDir = io.configDir ?? resolveConfigDir();
   if (argv.includes('--uninstall')) {
@@ -377,6 +421,7 @@ export async function runMenubar(argv: readonly string[], io: MenubarIO): Promis
     mkdirSync(configDir, { recursive: true });
     writeFileSync(join(configDir, PLUGIN_RECORD), `${target}\n`, { mode: 0o600 });
     io.stdout(`menubar: installed ${target}\nmenubar: it appears when SwiftBar or xbar next refreshes its plugins\n`);
+    await offerLoginItem(argv, io);
     return 0;
   }
   const target = flagValue(argv, '--detail');

@@ -2008,6 +2008,12 @@ change, each fail a named test.
 `KeepAlive` restarts only on a non-zero exit, and the Android app sat on WAITING FOR MACHINE
 (issue #60).
 
+- **Login item, by consent.** launchd restarts the daemon, not the app that draws the menu.
+  After writing the plugin, `--install` asks whether to add `/Applications/SwiftBar.app` (or
+  `xbar.app`) to the login items, through `/usr/bin/osascript` with the path as argv. It skips the
+  question if the app is already one, and `--login-item` / `--no-login-item` answer it. With no
+  terminal it changes nothing and prints the flag. A refusal from macOS never fails the install.
+  `--uninstall` leaves the login item: the app may run other plugins.
 - **A SwiftBar plugin, not an app.** `claude-usage menubar` prints SwiftBar/xbar plugin
   output. `menubar --install [--dir <d>]` writes `claude-usage.1m.sh` (mode 0755, atomic
   rename) into SwiftBar's plugin folder, read with `/usr/bin/defaults read com.ameba.SwiftBar

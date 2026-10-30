@@ -55,6 +55,7 @@ Usage: claude-usage <command> [options]
   statusline                        one-line status for statusLine.command
   service <start|stop|status>       start or stop the installed launchd/systemd service
   menubar [--install [--dir <d>]]   macOS menu-bar item (SwiftBar plugin); --uninstall removes it
+                                    --install offers to start SwiftBar at login (--login-item, --no-login-item)
   observe                           forward statusline JSON's rate_limits to the daemon
   --version                         print the version
   help                              print this help
@@ -513,9 +514,12 @@ export async function run(argv: readonly string[], io: CliIO = {}): Promise<numb
       return cmdService(rest, base);
     case 'menubar': {
       const { runMenubar } = await import('./menubar.js');
+      const interactive = rest.includes('--install') && process.stdin.isTTY === true && process.stdout.isTTY === true;
+      const prompt = interactive ? (await import('./install/plan.js')).readlinePrompter() : null;
       return runMenubar(rest, {
         stdout,
         stderr,
+        ...(prompt === null ? {} : { confirm: (question: string) => prompt(question, false) }),
         ...(io.configDir === undefined ? {} : { configDir: io.configDir }),
         ...(io.client === undefined ? {} : { client: io.client }),
         ...(io.env === undefined ? {} : { env: io.env }),
