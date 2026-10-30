@@ -78,13 +78,21 @@ public enum LimitStatusMapping {
     /// non-`normal` severity.
     public static func status(for limit: LimitDTO, thresholds: ThresholdsDTO) -> LimitStatus {
         let severity = limit.severity.lowercased()
-        if limit.percent >= thresholds.critical || criticalSeverities.contains(severity) {
+        let percent = limit.percent ?? 0
+        if percent >= thresholds.critical || criticalSeverities.contains(severity) {
             return .critical
         }
-        if limit.percent >= thresholds.warn || severity != "normal" {
+        if percent >= thresholds.warn || severity != "normal" {
             return .warn
         }
         return .ok
+    }
+}
+
+public extension [LimitDTO] {
+    /// A scoped row with no number is left out: it would otherwise read as a confident 0%.
+    var withoutUnknownScoped: [LimitDTO] {
+        filter { !($0.kind == "weekly_scoped" && $0.percent == nil) }
     }
 }
 
@@ -94,7 +102,7 @@ public extension LimitDTO {
             id: id,
             kind: kind,
             group: group,
-            percent: percent,
+            percent: percent ?? 0,
             severity: severity,
             resetsAt: ISODate.parse(resetsAt),
             scopeModel: scope?.model,
@@ -106,7 +114,7 @@ public extension LimitDTO {
 
 public extension SummaryDTO {
     func toLimits() -> [Limit] {
-        limits.limits.map { $0.toModel(status: LimitStatusMapping.status(of: status.byId[$0.id])) }
+        limits.limits.withoutUnknownScoped.map { $0.toModel(status: LimitStatusMapping.status(of: status.byId[$0.id])) }
     }
 }
 

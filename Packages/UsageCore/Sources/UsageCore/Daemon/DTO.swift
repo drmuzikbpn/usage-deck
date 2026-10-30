@@ -252,7 +252,8 @@ public struct LimitDTO: Codable, Sendable, Equatable {
     public var id: String
     public var kind: String
     public var group: String
-    public var percent: Int
+    /// `nil` when the daemon has no current number for this row (§23.40, §23.67).
+    public var percent: Int?
     public var severity: String
     public var resetsAt: String?
     public var scope: LimitScopeDTO?
@@ -262,7 +263,7 @@ public struct LimitDTO: Codable, Sendable, Equatable {
         id: String,
         kind: String,
         group: String = "",
-        percent: Int = 0,
+        percent: Int? = nil,
         severity: String = "normal",
         resetsAt: String? = nil,
         scope: LimitScopeDTO? = nil,
@@ -283,7 +284,7 @@ public struct LimitDTO: Codable, Sendable, Equatable {
         id = try c.decode(String.self, forKey: .id)
         kind = try c.decode(String.self, forKey: .kind)
         group = c.value(.group, or: "")
-        percent = c.value(.percent, or: 0)
+        percent = try? c.decodeIfPresent(Int.self, forKey: .percent)
         severity = c.value(.severity, or: "normal")
         resetsAt = c.optional(.resetsAt)
         scope = c.optional(.scope)
