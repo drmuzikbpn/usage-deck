@@ -30,7 +30,7 @@ and Android.
 
 ### Launch video
 
-https://github.com/user-attachments/assets/4150c424-cedb-4235-abfb-f23ec402f18e
+https://github.com/user-attachments/assets/17c440f4-cfb7-4947-bb52-e4b69cdba25c
 
 ### Walkthrough: the iPhone app in 30 seconds
 
