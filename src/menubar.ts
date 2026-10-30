@@ -26,6 +26,8 @@ export const PLUGIN_MARKER = '# claude-usage menubar plugin';
 /** `<configDir>/menubar-plugin` holds the absolute path `--install` wrote to. */
 export const PLUGIN_RECORD = 'menubar-plugin';
 const DEFAULTS_BIN = '/usr/bin/defaults';
+const OSASCRIPT_BIN = '/usr/bin/osascript';
+const OPEN_BIN = '/usr/bin/open';
 export const REPO_URL = 'https://github.com/drmuzikbpn/usage-deck';
 export const APP_STORE_URL = 'https://apps.apple.com/us/app/usage-deck/id6818383053';
 export const ABOUT_DESC =
@@ -95,17 +97,75 @@ function limitDetail(limit: NormalizedLimit, status: LimitStatus | undefined, no
   ];
 }
 
-/**
- * A dropdown row for one limit, with its details one level down. Unknown is not fine: a green
- * dot beside `?%` is a contradiction, so that row explains the wait instead.
- */
-function limitRows(limit: NormalizedLimit, label: string, status: LimitStatus | undefined, error: LimitsErrorInfo | null | undefined, now: number): string[] {
+/** Limit ids come from the daemon and end up as a menu parameter; keep them to plain tokens. */
+const SAFE_TARGET = /^[\w:.-]+$/;
+
+/** A row whose click opens one detail window (`menubar --detail <target>`), never a submenu. */
+function detailRow(label: string, plugin: string | null, target: string): string {
+  if (plugin === null || !SAFE_TARGET.test(target)) return info(label);
+  return `${clean(label)} | bash="${plugin.replace(/"/g, '')}" param1=menubar param2=--detail param3=${target} terminal=false`;
+}
+
+/** A dropdown row for one limit. Unknown is not fine: a green dot beside `?%` is a contradiction. */
+function limitRow(limit: NormalizedLimit, label: string, status: LimitStatus | undefined, plugin: string | null, now: number): string {
   const row =
     limit.percent === null
       ? `⚪ ${label}: waiting for a reading`
       : `${DOTS[status ?? 'ok']}${label}: ${limit.percent}%${resets(limit.resetsAt, now)}${limit.stale === true ? ' ⚠︎' : ''}`;
-  const detail = limit.percent === null ? waitingDetail(error, now) : limitDetail(limit, status, now);
-  return [info(row), ...detail.map((d) => `--${info(d)}`)];
+  return detailRow(row, plugin, limit.id);
+}
+
+const limitLabel = (limit: NormalizedLimit): string =>
+  SHORT_LABELS[limit.id] ?? limit.scope?.model ?? limit.id.replace(/^weekly_scoped:/, '');
+
+export interface Detail {
+  title: string;
+  message: string;
+  /** Extra buttons, each opening a URL. */
+  links: ReadonlyArray<{ label: string; url: string }>;
+}
+
+/** What the window for a clicked row says. `null` when the limit is gone since the menu drew. */
+export function detailFor(target: string, state: MenubarState, now: number): Detail | null {
+  if (target === 'about') {
+    return {
+      title: 'Usage Deck',
+      message: [state.running ? `claude-usage ${state.version}` : 'claude-usage', '', ABOUT_DESC, '', 'Even Seal Productions · MIT licence'].join('\n'),
+      links: [
+        { label: 'GitHub', url: REPO_URL },
+        { label: 'App Store', url: APP_STORE_URL },
+      ],
+    };
+  }
+  const summary = state.running ? state.summary : null;
+  const limit = summary?.limits.limits.find((l) => l.id === target);
+  if (summary === null || summary === undefined || limit === undefined) return null;
+  const label = limitLabel(limit);
+  if (limit.percent === null) {
+    return { title: `${label}: waiting for a reading`, message: waitingDetail(summary.limits.error, now).join('\n'), links: [] };
+  }
+  return {
+    title: `${label}: ${limit.percent}%`,
+    message: limitDetail(limit, summary.status.byId[limit.id], now).join('\n'),
+    links: [],
+  };
+}
+
+/** `display alert` with the text passed as argv, so nothing in it is parsed as AppleScript. */
+const ALERT_SCRIPT = [
+  'on run argv',
+  'tell me to activate',
+  'set theButtons to items 3 thru -1 of argv',
+  'return button returned of (display alert (item 1 of argv) message (item 2 of argv) buttons theButtons default button (last item of theButtons) giving up after 300)',
+  'end run',
+];
+
+async function showDetail(detail: Detail, exec: ExecRunner): Promise<void> {
+  const script = ALERT_SCRIPT.flatMap((line) => ['-e', line]);
+  const buttons = [...detail.links.map((l) => l.label), 'OK'];
+  const result = await exec(OSASCRIPT_BIN, [...script, detail.title, detail.message, ...buttons]);
+  const link = detail.links.find((l) => l.label === result.stdout.trim());
+  if (link !== undefined) await exec(OPEN_BIN, [link.url]);
 }
 
 /** Single-quote for the plugin's `sh` script. */
@@ -143,7 +203,7 @@ export function renderMenubar(state: MenubarState, now: number, plugin: string |
       if (limit === undefined) continue;
       if (limit.percent === null) unknown = true;
       parts.push(`${SHORT_LABELS[id] ?? id} ${limit.percent === null ? '—' : `${limit.percent}%`}`);
-      menu.push(...limitRows(limit, SHORT_LABELS[id] ?? id, summary?.status.byId[id], summary?.limits.error, now));
+      menu.push(limitRow(limit, limitLabel(limit), summary?.status.byId[id], plugin, now));
       if (limit.stale === true) stale = true;
       const at = typeof limit.asOf === 'string' ? Date.parse(limit.asOf) : Number.NaN;
       if (Number.isFinite(at)) newest = Math.max(newest, at);
@@ -161,8 +221,7 @@ export function renderMenubar(state: MenubarState, now: number, plugin: string |
     // Every other limit too: they count toward the title's dot, so it must be explainable here.
     for (const limit of summary?.limits.limits ?? []) {
       if ((HEADLINE_IDS as readonly string[]).includes(limit.id)) continue;
-      const label = limit.scope?.model ?? limit.id.replace(/^weekly_scoped:/, '');
-      lines.push(...limitRows(limit, label, summary?.status.byId[limit.id], summary?.limits.error, now));
+      lines.push(limitRow(limit, limitLabel(limit), summary?.status.byId[limit.id], plugin, now));
     }
     if (Number.isFinite(newest)) {
       lines.push(info(`${stale ? '⚠︎ Stale: updated' : 'Updated'} ${ago(now - newest)}`));
@@ -174,11 +233,7 @@ export function renderMenubar(state: MenubarState, now: number, plugin: string |
   }
   lines.push('Refresh | refresh=true');
   lines.push('---');
-  lines.push('About Usage Deck');
-  lines.push(`--${clean(state.running ? `claude-usage ${state.version}` : 'claude-usage')} | refresh=true`);
-  lines.push('--Not affiliated with Anthropic | refresh=true');
-  lines.push(`--GitHub | href=${REPO_URL}`);
-  lines.push(`--iPhone and Apple Watch app | href=${APP_STORE_URL}`);
+  lines.push(detailRow('About Usage Deck', plugin, 'about'));
   return `${lines.join('\n')}\n`;
 }
 
@@ -322,6 +377,14 @@ export async function runMenubar(argv: readonly string[], io: MenubarIO): Promis
     mkdirSync(configDir, { recursive: true });
     writeFileSync(join(configDir, PLUGIN_RECORD), `${target}\n`, { mode: 0o600 });
     io.stdout(`menubar: installed ${target}\nmenubar: it appears when SwiftBar or xbar next refreshes its plugins\n`);
+    return 0;
+  }
+  const target = flagValue(argv, '--detail');
+  if (target !== undefined) {
+    const state = await readMenubarState({ configDir, ...(io.client === undefined ? {} : { client: io.client }) });
+    const now = io.now ?? Date.now();
+    const detail = detailFor(target, state, now) ?? { title: 'Usage Deck', message: 'That limit is no longer reported.', links: [] };
+    await showDetail(detail, io.exec ?? defaultExec);
     return 0;
   }
   const plugin = flagValue(argv, '--plugin') ?? null;

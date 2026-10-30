@@ -8,7 +8,7 @@ import { runHook, readStdin } from './hook.js';
 import { runStatusline } from './statusline.js';
 import { getVersion } from './version.js';
 import type { LimitStatus } from './limits/status.js';
-import type { ServiceManager } from './service/index.js';
+import type { ExecRunner, ServiceManager } from './service/index.js';
 import type { NormalizedLimit } from './limits/types.js';
 import { isTokensGroupBy } from './server/types.js';
 import { resumeAll } from './pause/freeze.js';
@@ -24,6 +24,8 @@ export interface CliIO {
   env?: NodeJS.ProcessEnv;
   /** Injected in tests so no launchctl/systemctl ever runs. */
   service?: Pick<ServiceManager, 'start' | 'stop' | 'status'>;
+  /** Injected in tests so no window opens. */
+  exec?: ExecRunner;
   /** How long `service start|stop` waits for the daemon to come up or go; 0 in tests. */
   serviceWaitMs?: number;
 }
@@ -517,6 +519,7 @@ export async function run(argv: readonly string[], io: CliIO = {}): Promise<numb
         ...(io.configDir === undefined ? {} : { configDir: io.configDir }),
         ...(io.client === undefined ? {} : { client: io.client }),
         ...(io.env === undefined ? {} : { env: io.env }),
+        ...(io.exec === undefined ? {} : { exec: io.exec }),
       });
     }
     case 'config': {
