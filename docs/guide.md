@@ -145,6 +145,7 @@ Uninstall: `claude-usage uninstall` (add `--purge` to delete config and state to
 | `~/.claude/settings.json` | **merge-only**: four hook groups, and `statusLine` only when you have none | mode preserved |
 | `~/.claude/settings.json.claude-usage.bak` | one-time backup, written once and never overwritten | copies the source mode |
 | `~/.claude.json` | `mcpServers["claude-usage"]`, written by `claude mcp add --scope user` | `0600` |
+| your SwiftBar plugin folder (macOS, only after `claude-usage menubar --install`) | `claude-usage.1m.sh`, the menu-bar plugin; its path is recorded in `~/.config/claude-usage/menubar-plugin` | `0755` |
 
 `XDG_CONFIG_HOME`, `XDG_DATA_HOME` and `XDG_BIN_HOME` are respected; the first two are baked into the unit file.
 
@@ -256,7 +257,8 @@ claude-usage menubar --install # or: --install --dir <folder>
 The menu bar shows `5h 42% · 7d 61%` in the menu bar's own text colour, with a 🟢, 🟠 or 🔴
 dot in front for fine, warn and critical, and `⚠︎` when the newest reading is over 15 minutes old. When
 the daemon is down it shows `🔴 Claude ⏹`.
-The menu lists each limit with its reset time and has **Start daemon** / **Stop daemon**,
+The menu lists every limit with its reset time (`⚪ … waiting for a reading` when there is no
+number yet) and has **Start daemon** / **Stop daemon**,
 which run `claude-usage service start|stop`. It refreshes every minute. The plugin calls node
 and the `current` bin by absolute path, so it keeps working across auto-updates.
 **About Usage Deck** in the menu has the version, the disclaimer and links; SwiftBar's own

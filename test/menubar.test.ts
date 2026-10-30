@@ -16,6 +16,7 @@ import {
 } from '../src/menubar.js';
 import type { SummaryBody } from '../src/hook.js';
 import type { NormalizedLimit } from '../src/limits/types.js';
+import type { ServiceState } from '../src/service/index.js';
 import { startFakeDaemon, tempConfigDir, type FakeDaemon } from './helpers/fake-daemon.js';
 
 const NOW = Date.parse('2026-10-30T12:00:00Z');
@@ -106,6 +107,11 @@ describe('renderMenubar', () => {
     );
     expect(text).toContain('⚪ fable: waiting for a reading | refresh=true');
     expect(text).not.toContain('?%');
+  });
+
+  it('treats an unknown headline limit the same way', () => {
+    const text = renderMenubar({ running: true, version: '1', summary: summary([limit('weekly_all', null, { stale: true })]) }, NOW, PLUGIN);
+    expect(text).toContain('⚪ 7d: waiting for a reading | refresh=true');
   });
 
   it('has an About submenu with the links and the disclaimer', () => {
@@ -265,6 +271,53 @@ describe('menubar --install / --uninstall', () => {
 });
 
 describe('claude-usage service', () => {
+  const fake = (initial: ServiceState) => {
+    const f = {
+      state: initial,
+      calls: [] as string[],
+      start: async () => {
+        f.calls.push('start');
+        f.state = 'running' as ServiceState;
+      },
+      stop: async () => {
+        f.calls.push('stop');
+        f.state = 'stopped' as ServiceState;
+      },
+      status: async () => f.state,
+    };
+    return f;
+  };
+
+  it('starts and stops the service and reports the new state', async () => {
+    const service = fake('stopped');
+    const c = capture();
+    expect(await run(['service', 'start'], { ...c.io, service })).toBe(0);
+    expect(await run(['service', 'stop'], { ...c.io, service })).toBe(0);
+    expect(service.calls).toEqual(['start', 'stop']);
+    expect(c.out()).toBe('service: running\nservice: stopped\n');
+  });
+
+  it('exits non-zero from status unless it is running', async () => {
+    const c = capture();
+    expect(await run(['service', 'status'], { ...c.io, service: fake('running') })).toBe(0);
+    expect(await run(['service', 'status'], { ...c.io, service: fake('stopped') })).toBe(1);
+  });
+
+  it('points at install when no service is installed, and touches nothing', async () => {
+    const service = fake('not-installed');
+    const c = capture();
+    expect(await run(['service', 'start'], { ...c.io, service })).toBe(1);
+    expect(service.calls).toEqual([]);
+    expect(c.err()).toContain('claude-usage install');
+  });
+
+  it('reports a failed start without throwing', async () => {
+    const service = { ...fake('stopped'), start: async () => Promise.reject(new Error('kickstart failed')) };
+    const c = capture();
+    expect(await run(['service', 'start'], { ...c.io, service })).toBe(1);
+    expect(c.err()).toContain('service start failed: kickstart failed');
+  });
+
   it('rejects anything but start, stop or status', async () => {
     const c = capture();
     expect(await run(['service', 'restart'], { ...c.io, configDir: tempConfigDir() })).toBe(1);

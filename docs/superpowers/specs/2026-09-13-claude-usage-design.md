@@ -2018,7 +2018,9 @@ change, each fail a named test.
   bar's own text colour, never a set colour, because red text was unreadable on a tinted menu
   bar. A leading 🟢/🟠/🔴 dot carries the overall status. Dropdown rows get the same
   per-limit dot and no `color=`, because the dropdown is translucent too. The dropdown lists
-  every limit, not only the headline pair, because all of them count toward the dot. `⚠︎` means a row is `stale` or the newest `asOf` is over 15 minutes old.
+  every limit, not only the headline pair, because all of them count toward the dot. A row with
+  no number reads `⚪ <label>: waiting for a reading`. Info rows carry `refresh=true`, because
+  SwiftBar draws a row with no action as disabled, in faint grey. `⚠︎` means a row is `stale` or the newest `asOf` is over 15 minutes old.
   A daemon with no live pid in `daemon.json` shows as stopped. One that has a pid but does not
   answer within 2 s shows "Not answering". `menubar` always exits 0 and never prints the token.
 - **Start/Stop.** `claude-usage service start|stop|status` wraps the existing `ServiceManager`
@@ -2039,7 +2041,8 @@ overall status at `warn`.
 When the upstream snapshot is stale, and a fresh statusline `weekly_all` reading newer than
 `fetchedAt` names a `resets_at` outside `SAME_WINDOW_TOLERANCE_MS` of upstream's `weekly_all`
 row, every row the statusline cannot update is served with `percent`, `severity` and `resetsAt`
-as `null` and `stale: true`. It is the same treatment §23.40 gives a row whose window reset.
+as `null` and `stale: true`, and their `legacyWindows` entries are nulled to match. It is the
+same treatment §23.40 gives a row whose window reset.
 A scoped limit on a different schedule can go unknown when `weekly_all` resets naturally while
 upstream is failing: unknown is honest, and the next successful poll restores it.
 

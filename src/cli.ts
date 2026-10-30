@@ -8,6 +8,7 @@ import { runHook, readStdin } from './hook.js';
 import { runStatusline } from './statusline.js';
 import { getVersion } from './version.js';
 import type { LimitStatus } from './limits/status.js';
+import type { ServiceManager } from './service/index.js';
 import type { NormalizedLimit } from './limits/types.js';
 import { isTokensGroupBy } from './server/types.js';
 import { resumeAll } from './pause/freeze.js';
@@ -21,6 +22,8 @@ export interface CliIO {
   client?: Pick<DaemonClient, 'get'> & Partial<Pick<DaemonClient, 'post'>>;
   stdin?: string;
   env?: NodeJS.ProcessEnv;
+  /** Injected in tests so no launchctl/systemctl ever runs. */
+  service?: Pick<ServiceManager, 'start' | 'stop' | 'status'>;
 }
 
 /** Subcommands other waves own; they exist so `help` is honest about the surface. */
@@ -390,7 +393,7 @@ async function cmdService(argv: readonly string[], io: Required<Pick<CliIO, 'std
     return 1;
   }
   const { createServiceManager } = await import('./service/index.js');
-  const service = await createServiceManager(io.env === undefined ? {} : { env: io.env });
+  const service = io.service ?? (await createServiceManager(io.env === undefined ? {} : { env: io.env }));
   try {
     const state = await service.status();
     if (action === 'status') {

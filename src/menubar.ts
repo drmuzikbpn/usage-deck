@@ -6,6 +6,7 @@ import { DaemonClient, isPidAlive, readDaemonInfo } from './clients/http.js';
 import { resolveConfigDir } from './config.js';
 import { HEADLINE_IDS, type SummaryBody } from './hook.js';
 import type { LimitStatus } from './limits/status.js';
+import type { NormalizedLimit } from './limits/types.js';
 import { defaultExec, type ExecRunner } from './service/index.js';
 
 /**
@@ -63,6 +64,12 @@ function resets(iso: string | null, now: number): string {
   return ` · resets in ${h >= 24 ? `${Math.floor(h / 24)}d ${h % 24}h` : `${h}h ${min % 60}m`}`;
 }
 
+/** A dropdown row for one limit. Unknown is not fine: a green dot beside `?%` is a contradiction. */
+function limitRow(limit: NormalizedLimit, label: string, status: LimitStatus | undefined, now: number): string {
+  if (limit.percent === null) return info(`⚪ ${label}: waiting for a reading`);
+  return info(`${DOTS[status ?? 'ok']}${label}: ${limit.percent}%${resets(limit.resetsAt, now)}${limit.stale === true ? ' ⚠︎' : ''}`);
+}
+
 /** Single-quote for the plugin's `sh` script. */
 const shQuote = (s: string): string => `'${s.replace(/'/g, `'\\''`)}'`;
 
@@ -97,7 +104,7 @@ export function renderMenubar(state: MenubarState, now: number, plugin: string |
       if (limit === undefined) continue;
       const pct = limit.percent === null ? '?%' : `${limit.percent}%`;
       parts.push(`${SHORT_LABELS[id] ?? id} ${pct}`);
-      menu.push(`${DOTS[summary?.status.byId[id] ?? 'ok']}${SHORT_LABELS[id] ?? id}: ${pct}${resets(limit.resetsAt, now)}`);
+      menu.push(limitRow(limit, SHORT_LABELS[id] ?? id, summary?.status.byId[id], now));
       if (limit.stale === true) stale = true;
       const at = typeof limit.asOf === 'string' ? Date.parse(limit.asOf) : Number.NaN;
       if (Number.isFinite(at)) newest = Math.max(newest, at);
@@ -110,19 +117,12 @@ export function renderMenubar(state: MenubarState, now: number, plugin: string |
     lines.push('---');
     lines.push(info(`claude-usage: running (${state.version === '' ? 'version unknown' : state.version})`));
     if (summary === null) lines.push(info('🔴 Not answering'));
-    lines.push(...menu.map(info));
+    lines.push(...menu);
     // Every other limit too: they count toward the title's dot, so it must be explainable here.
     for (const limit of summary?.limits.limits ?? []) {
       if ((HEADLINE_IDS as readonly string[]).includes(limit.id)) continue;
       const label = limit.scope?.model ?? limit.id.replace(/^weekly_scoped:/, '');
-      if (limit.percent === null) {
-        // Unknown is not fine: a green dot beside `?%` reads as a contradiction.
-        lines.push(info(`⚪ ${label}: waiting for a reading`));
-        continue;
-      }
-      const pct = `${limit.percent}%`;
-      const dot = DOTS[summary?.status.byId[limit.id] ?? 'ok'];
-      lines.push(info(`${dot}${label}: ${pct}${resets(limit.resetsAt, now)}${limit.stale === true ? ' ⚠︎' : ''}`));
+      lines.push(limitRow(limit, label, summary?.status.byId[limit.id], now));
     }
     if (Number.isFinite(newest)) {
       lines.push(info(`${stale ? '⚠︎ Stale: updated' : 'Updated'} ${ago(now - newest)}`));
