@@ -101,6 +101,14 @@ export function renderMenubar(state: MenubarState, now: number, plugin: string |
     lines.push(clean(`claude-usage: running (${state.version === '' ? 'version unknown' : state.version})`));
     if (summary === null) lines.push('🔴 Not answering');
     lines.push(...menu.map(clean));
+    // Every other limit too: they count toward the title's dot, so it must be explainable here.
+    for (const limit of summary?.limits.limits ?? []) {
+      if ((HEADLINE_IDS as readonly string[]).includes(limit.id)) continue;
+      const pct = limit.percent === null ? '?%' : `${limit.percent}%`;
+      const label = limit.scope?.model ?? limit.id.replace(/^weekly_scoped:/, '');
+      const dot = DOTS[summary?.status.byId[limit.id] ?? 'ok'];
+      lines.push(clean(`${dot}${label}: ${pct}${resets(limit.resetsAt, now)}${limit.stale === true ? ' ⚠︎' : ''}`));
+    }
     if (Number.isFinite(newest)) {
       lines.push(`${stale ? '⚠︎ Stale: updated' : 'Updated'} ${ago(now - newest)}`);
     } else if (parts.length > 0 && stale) {
