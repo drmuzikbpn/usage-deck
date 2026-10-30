@@ -81,9 +81,11 @@ describe('renderMenubar', () => {
     expect(text).not.toContain('Start daemon');
   });
 
-  it('colours the title by the overall status', () => {
+  it('marks the overall status with a dot, never by colouring the title text', () => {
     const text = renderMenubar({ running: true, version: '1', summary: summary([limit('session', 97)], 'critical') }, NOW, PLUGIN);
-    expect(text.split('\n')[0]).toBe('5h 97% | color=red');
+    expect(text.split('\n')[0]).toBe('🔴 5h 97%');
+    const warn = renderMenubar({ running: true, version: '1', summary: summary([limit('session', 85)], 'warn') }, NOW, PLUGIN);
+    expect(warn.split('\n')[0]).toBe('🟠 5h 85%');
     expect(text).toContain('5h: 97% | color=red');
   });
 
@@ -101,7 +103,7 @@ describe('renderMenubar', () => {
 
   it('shows a stopped daemon in red with Start', () => {
     const text = renderMenubar({ running: false }, NOW, PLUGIN);
-    expect(text.split('\n')[0]).toBe('Claude ⏹ | color=red');
+    expect(text.split('\n')[0]).toBe('🔴 Claude ⏹');
     expect(text).toContain('claude-usage: stopped');
     expect(text).toContain(`Start daemon | bash="${PLUGIN}" param1=service param2=start`);
   });

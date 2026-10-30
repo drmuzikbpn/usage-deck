@@ -253,8 +253,9 @@ brew install swiftbar          # open it once and pick a plugin folder
 claude-usage menubar --install # or: --install --dir <folder>
 ```
 
-The menu bar shows `5h 42% · 7d 61%`, amber/red above your thresholds, and `⚠︎` when the
-newest reading is over 15 minutes old. When the daemon is down it shows `Claude ⏹` in red.
+The menu bar shows `5h 42% · 7d 61%` in the menu bar's own text colour, with a 🟠 or 🔴 dot
+in front above your thresholds and `⚠︎` when the newest reading is over 15 minutes old. When
+the daemon is down it shows `🔴 Claude ⏹`.
 The menu lists each limit with its reset time and has **Start daemon** / **Stop daemon**,
 which run `claude-usage service start|stop`. It refreshes every minute. The plugin calls node
 and the `current` bin by absolute path, so it keeps working across auto-updates.
