@@ -30,7 +30,7 @@ and Android.
 
 ### Launch video
 
-https://github.com/user-attachments/assets/4150c424-cedb-4235-abfb-f23ec402f18e
+https://github.com/user-attachments/assets/17c440f4-cfb7-4947-bb52-e4b69cdba25c
 
 ### Walkthrough: the iPhone app in 30 seconds
 
@@ -116,6 +116,10 @@ Remove everything again with `claude-usage uninstall`.
   session data from Claude Code's own files. Support for more tools is coming.
 
 ## Screenshots
+
+<p align="center">
+  <img src="docs/images/app-store-set.png" alt="The six App Store screenshots: limits, sessions, burn rate by project, pausing a project, Apple Watch and widgets, and staying on your network" width="100%">
+</p>
 
 Landscape is where it shines: stand the phone on your desk next to the keyboard.
 
