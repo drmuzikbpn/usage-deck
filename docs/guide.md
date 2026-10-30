@@ -259,6 +259,8 @@ the daemon is down it shows `🔴 Claude ⏹`.
 The menu lists each limit with its reset time and has **Start daemon** / **Stop daemon**,
 which run `claude-usage service start|stop`. It refreshes every minute. The plugin calls node
 and the `current` bin by absolute path, so it keeps working across auto-updates.
+**About Usage Deck** in the menu has the version, the disclaimer and links; SwiftBar's own
+About window shows the same details once you re-run `--install` on an older plugin.
 `claude-usage menubar --uninstall` removes it, and `uninstall` does too. xbar works as well:
 pass `--dir` with xbar's plugin folder.
 
