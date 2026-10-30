@@ -120,7 +120,7 @@ struct DeviceReducerTests {
         #expect(r.etag == #"W/"3""#)
     }
 
-    @Test func aBareLimitsEventReusesTheLastStatusMapThenFallsBackToThresholds() {
+    @Test func aBareLimitsEventRecomputesStatusSoAResetWeekStopsBeingRed() {
         var r = DeviceReducer(record: rec, burn: burn)
         let snap = #"{"summary":{"status":{"byId":{"session":"critical"}},"thresholds":{"warn":50,"critical":60}},"rev":1}"#
         r.apply(SSEDecoder.decode(event: "snapshot", data: snap), now: t0)
@@ -132,7 +132,7 @@ struct DeviceReducerTests {
             ),
             now: t0
         )
-        #expect(r.state.limits.map(\.status) == [.critical, .warn])
+        #expect(r.state.limits.map(\.status) == [.ok, .warn])
     }
 
     @Test func anUnauthorizedFailureMarksTheDeviceForRepairUntilItAnswersAgain() {

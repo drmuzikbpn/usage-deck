@@ -60,7 +60,9 @@ public extension UpdateDTO {
 }
 
 public enum LimitStatusMapping {
-    private static let criticalSeverities: Set<String> = ["critical", "exceeded", "blocked"]
+    private static let criticalSeverities: Set<String> = [
+        "critical", "severe", "exceeded", "exhausted", "blocked", "locked", "limit_reached", "over_limit",
+    ]
 
     /// The daemon's `status.byId` value for a limit.
     public static func status(of string: String?) -> LimitStatus {
@@ -71,7 +73,7 @@ public enum LimitStatusMapping {
         }
     }
 
-    /// Status for a limit no `status.byId` map covers (a bare `limits` event). Mirrors daemon
+    /// Status for a row of a bare `limits` event, which has no `status.byId` map. Mirrors daemon
     /// spec §23.3: critical on percent or a critical-like severity, warn on percent or any
     /// non-`normal` severity.
     public static func status(for limit: LimitDTO, thresholds: ThresholdsDTO) -> LimitStatus {
