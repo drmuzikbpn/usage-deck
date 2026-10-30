@@ -168,6 +168,11 @@ describe('LimitsPoller.observe (§23.36)', () => {
       expect(h.poller.observe(rateLimits(0, 0)).accepted).toBe(true); // resets at EPOCH + 5d
       expect(byId(h.poller, 'weekly_scoped:fable')).toMatchObject({ percent: null, severity: null, resetsAt: null, stale: true });
       expect(byId(h.poller, 'weekly_all')).toMatchObject({ percent: 0, source: 'statusline', stale: false });
+      const legacy = h.poller.snapshot().legacyWindows;
+      expect(legacy['seven_day']).toMatchObject({ utilization: 0 });
+      for (const [key, win] of Object.entries(legacy)) {
+        if (key !== 'five_hour' && key !== 'seven_day') expect(win).toEqual({ utilization: null, resetsAt: null });
+      }
     });
 
     it('keeps them while the statusline shows the same week', async () => {

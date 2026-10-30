@@ -287,9 +287,14 @@ describe('SpendStore watcher integration', () => {
     await appendFile(join(projects, MAIN_A), APPENDED);
     store.notifyChanged();
     await startPromise;
-    await store.whenIdle();
 
-    expect(store.query({ since: 'today', groupBy: 'project' }).totals.messages).toBe(4);
+    // On a slow runner the scan can finish before the append does. The notify then goes through
+    // the watcher's debounce instead of the drain, so `whenIdle()` can return before that scan
+    // starts (#92). Dropping the event would still fail here, after the timeout.
+    await vi.waitFor(() => expect(store.query({ since: 'today', groupBy: 'project' }).totals.messages).toBe(4), {
+      timeout: 8000,
+      interval: 50,
+    });
     expect(store.query({ since: 'today', groupBy: 'project' }).groups[0]?.key).toBe(PROJECT_A);
-  });
+  }, 10_000);
 });

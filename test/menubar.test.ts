@@ -2,9 +2,11 @@
 // Copyright (c) 2026 Even Seal Productions
 import { afterEach, describe, expect, it } from 'vitest';
 import { existsSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { run } from '../src/cli.js';
+import { daemonFilePath } from '../src/clients/http.js';
 import {
   PLUGIN_FILE,
   PLUGIN_MARKER,
@@ -15,7 +17,8 @@ import {
   runMenubar,
 } from '../src/menubar.js';
 import type { SummaryBody } from '../src/hook.js';
-import type { NormalizedLimit } from '../src/limits/types.js';
+import type { LimitsErrorInfo, NormalizedLimit } from '../src/limits/types.js';
+import type { ServiceState } from '../src/service/index.js';
 import { startFakeDaemon, tempConfigDir, type FakeDaemon } from './helpers/fake-daemon.js';
 
 const NOW = Date.parse('2026-10-30T12:00:00Z');
@@ -108,6 +111,56 @@ describe('renderMenubar', () => {
     expect(text).not.toContain('?%');
   });
 
+  it('treats an unknown headline limit the same way', () => {
+    const text = renderMenubar({ running: true, version: '1', summary: summary([limit('weekly_all', null, { stale: true })]) }, NOW, PLUGIN);
+    expect(text).toContain('⚪ 7d: waiting for a reading | refresh=true');
+  });
+
+  it('gives each limit a submenu of details', () => {
+    const resetsAt = new Date(NOW + 90 * 60000).toISOString();
+    const text = renderMenubar(
+      { running: true, version: '1', summary: summary([limit('session', 62, { resetsAt, source: 'statusline' })]) },
+      NOW,
+      PLUGIN,
+    );
+    expect(text).toContain('🟢 5h: 62% · resets in 1h 30m | refresh=true\n--Status: ok | refresh=true\n--Resets ');
+    expect(text).toContain("--From Claude Code's status line | refresh=true");
+    expect(text).toContain('--Read 2m ago | refresh=true');
+  });
+
+  describe('why a limit is waiting', () => {
+    const waiting = (error: LimitsErrorInfo | null) => {
+      const body = summary([limit('session', 5), limit('weekly_scoped:fable', null, { stale: true })]);
+      body.limits.error = error;
+      return renderMenubar({ running: true, version: '1', summary: body }, NOW, PLUGIN);
+    };
+
+    it('names the 429 and the next try', () => {
+      const text = waiting({
+        code: 'rate_limited',
+        message: 'x',
+        retryAt: new Date(NOW + 600000).toISOString(),
+      });
+      expect(text).toContain('⚪ fable: waiting for a reading | refresh=true\n--Anthropic is returning HTTP 429 when we try to read this limit | refresh=true\n--Next try: ');
+      expect(text).not.toContain('Next try: soon');
+    });
+
+    it('says soon once the retry time has passed', () => {
+      const text = waiting({ code: 'rate_limited', message: 'x', retryAt: new Date(NOW - 600000).toISOString() });
+      expect(text).toContain('--Next try: soon | refresh=true');
+    });
+
+    it('passes on any other error with its hint', () => {
+      const text = waiting({ code: 'unauthorized', message: 'usage request rejected with 401', hint: 'run claude to log in' });
+      expect(text).toContain("--Can't read this limit: usage request rejected with 401 | refresh=true");
+      expect(text).toContain('--run claude to log in | refresh=true');
+    });
+
+    it('still says something with no error', () => {
+      expect(waiting(null)).toContain("--No reading from Anthropic's usage endpoint yet | refresh=true");
+    });
+  });
+
   it('has an About submenu with the links and the disclaimer', () => {
     const text = renderMenubar({ running: true, version: '0.1.165', summary: null }, NOW, PLUGIN);
     expect(text).toContain('About Usage Deck\n--claude-usage 0.1.165 | refresh=true\n--Not affiliated with Anthropic');
@@ -144,7 +197,7 @@ describe('renderMenubar', () => {
 
   it('flags a row the daemon marked stale', () => {
     const text = renderMenubar({ running: true, version: '1', summary: summary([limit('weekly_all', null, { stale: true })]) }, NOW, PLUGIN);
-    expect(text.split('\n')[0]).toBe('🟢 7d ?% ⚠︎');
+    expect(text.split('\n')[0]).toBe('⚪ 7d — ⚠︎');
   });
 
   it('shows a stopped daemon in red with Start', () => {
@@ -208,7 +261,8 @@ describe('menubar --install / --uninstall', () => {
     const body = readFileSync(file, 'utf8');
     expect(body.startsWith('#!/bin/sh\n')).toBe(true);
     expect(body).toContain(PLUGIN_MARKER);
-    expect(body).toContain(`exec '/opt/node/bin/node' '/opt/o'\\''neil/.local/share/claude-usage/current/bin/claude-usage' menubar --plugin "$0"`);
+    expect(body).toContain("node='/opt/node/bin/node'");
+    expect(body).toContain(`exec "$node" '/opt/o'\\''neil/.local/share/claude-usage/current/bin/claude-usage' menubar --plugin "$0"`);
     expect(statSync(file).mode & 0o777).toBe(0o755);
     expect(readFileSync(join(configDir, PLUGIN_RECORD), 'utf8').trim()).toBe(file);
     expect(c.out()).toContain(`menubar: installed ${file}`);
@@ -249,6 +303,54 @@ describe('menubar --install / --uninstall', () => {
     expect(existsSync(join(dir, PLUGIN_FILE))).toBe(true);
   });
 
+  it('refuses --dir without a folder', async () => {
+    const c = capture();
+    expect(await runMenubar(['--install', '--dir'], { ...c.io, configDir: tempConfigDir() })).toBe(1);
+    expect(await runMenubar(['--install', '--dir', '--foo'], { ...c.io, configDir: tempConfigDir() })).toBe(1);
+    expect(c.err()).toContain('--dir needs a folder');
+  });
+
+  it('keeps the existing plugin when a reinstall cannot write', async () => {
+    const configDir = tempConfigDir();
+    const dir = mkdtempSync(join(tmpdir(), 'swiftbar-'));
+    const c = capture();
+    await runMenubar(['--install', '--dir', dir], { ...c.io, configDir, nodePath: '/n', binPath: '/b' });
+    const blocked = join(dir, 'a-file');
+    writeFileSync(blocked, '');
+    const f = capture();
+    expect(await runMenubar(['--install', '--dir', join(blocked, 'sub')], { ...f.io, configDir, nodePath: '/n', binPath: '/b' })).toBe(1);
+    expect(f.err()).toContain('could not write the plugin');
+    expect(existsSync(join(dir, PLUGIN_FILE))).toBe(true);
+    expect(readFileSync(join(configDir, PLUGIN_RECORD), 'utf8').trim()).toBe(join(dir, PLUGIN_FILE));
+  });
+
+  it('a reinstall to the same folder keeps the plugin; to another moves it', async () => {
+    const configDir = tempConfigDir();
+    const a = mkdtempSync(join(tmpdir(), 'swiftbar-'));
+    const b = mkdtempSync(join(tmpdir(), 'swiftbar-'));
+    const c = capture();
+    const opts = { ...c.io, configDir, nodePath: '/n', binPath: '/b' };
+    await runMenubar(['--install', '--dir', a], opts);
+    await runMenubar(['--install', '--dir', a], opts);
+    expect(existsSync(join(a, PLUGIN_FILE))).toBe(true);
+    await runMenubar(['--install', '--dir', b], opts);
+    expect(existsSync(join(a, PLUGIN_FILE))).toBe(false);
+    expect(existsSync(join(b, PLUGIN_FILE))).toBe(true);
+  });
+
+  it('the script survives its node path going away', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'swiftbar-'));
+    const file = join(dir, PLUGIN_FILE);
+    writeFileSync(file, pluginScript('/gone/node', '/gone/bin'), { mode: 0o755 });
+    const noNode = spawnSync(file, [], { env: { PATH: '/nonexistent' }, encoding: 'utf8' });
+    expect(noNode.status).toBe(0);
+    expect(noNode.stdout).toContain('run claude-usage menubar --install');
+    const fake = join(dir, 'node');
+    writeFileSync(fake, '#!/bin/sh\necho "ran $1 $2"\n', { mode: 0o755 });
+    const fallback = spawnSync(file, ['service', 'stop'], { env: { PATH: `${dir}:/bin:/usr/bin` }, encoding: 'utf8' });
+    expect(fallback.stdout).toBe('ran /gone/bin service\n');
+  });
+
   it('never removes a file that is not ours', () => {
     const configDir = tempConfigDir();
     const dir = mkdtempSync(join(tmpdir(), 'swiftbar-'));
@@ -260,11 +362,72 @@ describe('menubar --install / --uninstall', () => {
   });
 
   it('the script passes arguments through, so menu actions reach the CLI', () => {
-    expect(pluginScript('/n', '/b')).toContain(`if [ "$#" -gt 0 ]; then exec '/n' '/b' "$@"; fi`);
+    expect(pluginScript('/n', '/b')).toContain(`if [ "$#" -gt 0 ]; then exec "$node" '/b' "$@"; fi`);
   });
 });
 
 describe('claude-usage service', () => {
+  const quiet = () => ({ configDir: tempConfigDir(), serviceWaitMs: 0 });
+
+  it('waits for a stopped daemon to go, so the menu refresh is not stale', async () => {
+    const configDir = tempConfigDir();
+    const child = spawn('/bin/sleep', ['5']);
+    writeFileSync(daemonFilePath(configDir), JSON.stringify({ pid: child.pid, port: 1, version: '1' }));
+    const service = { ...fake('running'), stop: async () => void setTimeout(() => child.kill(), 150) };
+    const c = capture();
+    const t0 = Date.now();
+    await run(['service', 'stop'], { ...c.io, service, configDir, serviceWaitMs: 2000 });
+    expect(child.killed).toBe(true);
+    expect(Date.now() - t0).toBeLessThan(1900);
+  });
+
+  const fake = (initial: ServiceState) => {
+    const f = {
+      state: initial,
+      calls: [] as string[],
+      start: async () => {
+        f.calls.push('start');
+        f.state = 'running' as ServiceState;
+      },
+      stop: async () => {
+        f.calls.push('stop');
+        f.state = 'stopped' as ServiceState;
+      },
+      status: async () => f.state,
+    };
+    return f;
+  };
+
+  it('starts and stops the service and reports the new state', async () => {
+    const service = fake('stopped');
+    const c = capture();
+    expect(await run(['service', 'start'], { ...c.io, service, ...quiet() })).toBe(0);
+    expect(await run(['service', 'stop'], { ...c.io, service, ...quiet() })).toBe(0);
+    expect(service.calls).toEqual(['start', 'stop']);
+    expect(c.out()).toBe('service: running\nservice: stopped\n');
+  });
+
+  it('exits non-zero from status unless it is running', async () => {
+    const c = capture();
+    expect(await run(['service', 'status'], { ...c.io, service: fake('running'), ...quiet() })).toBe(0);
+    expect(await run(['service', 'status'], { ...c.io, service: fake('stopped'), ...quiet() })).toBe(1);
+  });
+
+  it('points at install when no service is installed, and touches nothing', async () => {
+    const service = fake('not-installed');
+    const c = capture();
+    expect(await run(['service', 'start'], { ...c.io, service, ...quiet() })).toBe(1);
+    expect(service.calls).toEqual([]);
+    expect(c.err()).toContain('claude-usage install');
+  });
+
+  it('reports a failed start without throwing', async () => {
+    const service = { ...fake('stopped'), start: async () => Promise.reject(new Error('kickstart failed')) };
+    const c = capture();
+    expect(await run(['service', 'start'], { ...c.io, service, ...quiet() })).toBe(1);
+    expect(c.err()).toContain('service start failed: kickstart failed');
+  });
+
   it('rejects anything but start, stop or status', async () => {
     const c = capture();
     expect(await run(['service', 'restart'], { ...c.io, configDir: tempConfigDir() })).toBe(1);

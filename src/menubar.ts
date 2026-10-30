@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Even Seal Productions
-import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, isAbsolute, join } from 'node:path';
+import { chmodSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { isAbsolute, join } from 'node:path';
 import { DaemonClient, isPidAlive, readDaemonInfo } from './clients/http.js';
 import { resolveConfigDir } from './config.js';
 import { HEADLINE_IDS, type SummaryBody } from './hook.js';
 import type { LimitStatus } from './limits/status.js';
+import type { LimitSource, LimitsErrorInfo, NormalizedLimit } from './limits/types.js';
 import { defaultExec, type ExecRunner } from './service/index.js';
 
 /**
@@ -63,6 +64,50 @@ function resets(iso: string | null, now: number): string {
   return ` · resets in ${h >= 24 ? `${Math.floor(h / 24)}d ${h % 24}h` : `${h}h ${min % 60}m`}`;
 }
 
+const WHEN: Intl.DateTimeFormatOptions = { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' };
+const clock = (iso: string): string => new Date(iso).toLocaleString(undefined, WHEN);
+
+/** Why a limit has no number: what upstream is answering, and when it is tried again. */
+function waitingDetail(error: LimitsErrorInfo | null | undefined, now: number): string[] {
+  if (error === null || error === undefined) return ["No reading from Anthropic's usage endpoint yet"];
+  if (error.code !== 'rate_limited') return [`Can't read this limit: ${error.message}`, ...(error.hint === undefined ? [] : [error.hint])];
+  const retry = error.retryAt === undefined ? Number.NaN : Date.parse(error.retryAt);
+  return [
+    'Anthropic is returning HTTP 429 when we try to read this limit',
+    Number.isFinite(retry) && retry > now ? `Next try: ${clock(error.retryAt ?? '')}` : 'Next try: soon',
+    'It clears on its own; there is nothing to do',
+  ];
+}
+
+const SOURCES: Record<LimitSource, string> = {
+  statusline: "From Claude Code's status line",
+  upstream: "From Anthropic's usage endpoint",
+};
+
+function limitDetail(limit: NormalizedLimit, status: LimitStatus | undefined, now: number): string[] {
+  const asOf = typeof limit.asOf === 'string' ? Date.parse(limit.asOf) : Number.NaN;
+  return [
+    `Status: ${status ?? 'ok'}`,
+    ...(limit.resetsAt === null ? [] : [`Resets ${clock(limit.resetsAt)}`]),
+    ...(limit.source === undefined ? [] : [SOURCES[limit.source]]),
+    ...(Number.isFinite(asOf) ? [`Read ${ago(now - asOf)}`] : []),
+    ...(limit.stale === true ? ['This number may be out of date'] : []),
+  ];
+}
+
+/**
+ * A dropdown row for one limit, with its details one level down. Unknown is not fine: a green
+ * dot beside `?%` is a contradiction, so that row explains the wait instead.
+ */
+function limitRows(limit: NormalizedLimit, label: string, status: LimitStatus | undefined, error: LimitsErrorInfo | null | undefined, now: number): string[] {
+  const row =
+    limit.percent === null
+      ? `⚪ ${label}: waiting for a reading`
+      : `${DOTS[status ?? 'ok']}${label}: ${limit.percent}%${resets(limit.resetsAt, now)}${limit.stale === true ? ' ⚠︎' : ''}`;
+  const detail = limit.percent === null ? waitingDetail(error, now) : limitDetail(limit, status, now);
+  return [info(row), ...detail.map((d) => `--${info(d)}`)];
+}
+
 /** Single-quote for the plugin's `sh` script. */
 const shQuote = (s: string): string => `'${s.replace(/'/g, `'\\''`)}'`;
 
@@ -91,38 +136,33 @@ export function renderMenubar(state: MenubarState, now: number, plugin: string |
     const menu: string[] = [];
     let newest = Number.NEGATIVE_INFINITY;
     let stale = false;
+    let unknown = false;
     const summary = state.summary;
     for (const id of HEADLINE_IDS) {
       const limit = summary?.limits.limits.find((l) => l.id === id);
       if (limit === undefined) continue;
-      const pct = limit.percent === null ? '?%' : `${limit.percent}%`;
-      parts.push(`${SHORT_LABELS[id] ?? id} ${pct}`);
-      menu.push(`${DOTS[summary?.status.byId[id] ?? 'ok']}${SHORT_LABELS[id] ?? id}: ${pct}${resets(limit.resetsAt, now)}`);
+      if (limit.percent === null) unknown = true;
+      parts.push(`${SHORT_LABELS[id] ?? id} ${limit.percent === null ? '—' : `${limit.percent}%`}`);
+      menu.push(...limitRows(limit, SHORT_LABELS[id] ?? id, summary?.status.byId[id], summary?.limits.error, now));
       if (limit.stale === true) stale = true;
       const at = typeof limit.asOf === 'string' ? Date.parse(limit.asOf) : Number.NaN;
       if (Number.isFinite(at)) newest = Math.max(newest, at);
     }
     if (Number.isFinite(newest) && now - newest > MENUBAR_STALE_MS) stale = true;
 
-    const dot = DOTS[summary?.status.overall ?? 'ok'];
+    const overall = summary?.status.overall ?? 'ok';
+    const dot = unknown && overall === 'ok' ? '⚪ ' : DOTS[overall];
     const title = parts.length === 0 ? 'Claude …' : `${dot}${parts.join(' · ')}${stale ? ' ⚠︎' : ''}`;
     lines.push(clean(title));
     lines.push('---');
     lines.push(info(`claude-usage: running (${state.version === '' ? 'version unknown' : state.version})`));
     if (summary === null) lines.push(info('🔴 Not answering'));
-    lines.push(...menu.map(info));
+    lines.push(...menu);
     // Every other limit too: they count toward the title's dot, so it must be explainable here.
     for (const limit of summary?.limits.limits ?? []) {
       if ((HEADLINE_IDS as readonly string[]).includes(limit.id)) continue;
       const label = limit.scope?.model ?? limit.id.replace(/^weekly_scoped:/, '');
-      if (limit.percent === null) {
-        // Unknown is not fine: a green dot beside `?%` reads as a contradiction.
-        lines.push(info(`⚪ ${label}: waiting for a reading`));
-        continue;
-      }
-      const pct = `${limit.percent}%`;
-      const dot = DOTS[summary?.status.byId[limit.id] ?? 'ok'];
-      lines.push(info(`${dot}${label}: ${pct}${resets(limit.resetsAt, now)}${limit.stale === true ? ' ⚠︎' : ''}`));
+      lines.push(...limitRows(limit, label, summary?.status.byId[limit.id], summary?.limits.error, now));
     }
     if (Number.isFinite(newest)) {
       lines.push(info(`${stale ? '⚠︎ Stale: updated' : 'Updated'} ${ago(now - newest)}`));
@@ -186,8 +226,15 @@ export function pluginScript(nodePath: string, binPath: string): string {
     `# <xbar.desc>${ABOUT_DESC}</xbar.desc>`,
     `# <xbar.abouturl>${REPO_URL}</xbar.abouturl>`,
     '# <swiftbar.hideRunInTerminal>true</swiftbar.hideRunInTerminal>',
-    `if [ "$#" -gt 0 ]; then exec ${shQuote(nodePath)} ${shQuote(binPath)} "$@"; fi`,
-    `exec ${shQuote(nodePath)} ${shQuote(binPath)} menubar --plugin "$0"`,
+    // A node upgrade can remove the path install saw; fall back to PATH, then say what to do.
+    `node=${shQuote(nodePath)}`,
+    '[ -x "$node" ] || node=$(command -v node)',
+    'if [ -z "$node" ]; then',
+    "  printf '%s\\n' '🔴 Claude' '---' 'Node.js not found: run claude-usage menubar --install in a terminal'",
+    '  exit 0',
+    'fi',
+    `if [ "$#" -gt 0 ]; then exec "$node" ${shQuote(binPath)} "$@"; fi`,
+    `exec "$node" ${shQuote(binPath)} menubar --plugin "$0"`,
     '',
   ].join('\n');
 }
@@ -198,16 +245,19 @@ async function swiftBarPluginDir(exec: ExecRunner): Promise<string | null> {
   return r.code === 0 && isAbsolute(dir) ? dir : null;
 }
 
-/** Remove the plugin `--install` recorded, if it is still ours. Returns the removed path. */
-export function removeMenubarPlugin(configDir: string): string | null {
-  const record = join(configDir, PLUGIN_RECORD);
-  let path: string;
+function recordedPlugin(configDir: string): string | null {
   try {
-    path = readFileSync(record, 'utf8').trim();
+    return readFileSync(join(configDir, PLUGIN_RECORD), 'utf8').trim();
   } catch {
     return null;
   }
-  rmSync(record, { force: true });
+}
+
+/** Remove the plugin `--install` recorded, if it is still ours. Returns the removed path. */
+export function removeMenubarPlugin(configDir: string): string | null {
+  const path = recordedPlugin(configDir);
+  if (path === null) return null;
+  rmSync(join(configDir, PLUGIN_RECORD), { force: true });
   try {
     if (!isAbsolute(path) || !readFileSync(path, 'utf8').includes(PLUGIN_MARKER)) return null;
   } catch {
@@ -231,8 +281,13 @@ export async function runMenubar(argv: readonly string[], io: MenubarIO): Promis
     return 0;
   }
   if (argv.includes('--install')) {
-    const dir = flagValue(argv, '--dir') ?? (await swiftBarPluginDir(io.exec ?? defaultExec));
-    if (dir === undefined || dir === null) {
+    const given = flagValue(argv, '--dir');
+    if (argv.includes('--dir') && (given === undefined || given.startsWith('--'))) {
+      io.stderr('claude-usage menubar: --dir needs a folder\n');
+      return 1;
+    }
+    const dir = given ?? (await swiftBarPluginDir(io.exec ?? defaultExec));
+    if (dir === null) {
       io.stderr(
         'claude-usage menubar: SwiftBar has no plugin folder yet. Install it (brew install swiftbar),\n' +
           'open it once and pick a folder, or pass --dir <folder>.\n',
@@ -246,17 +301,27 @@ export async function runMenubar(argv: readonly string[], io: MenubarIO): Promis
     const { currentBin } = await import('./paths.js');
     const nodePath = io.nodePath ?? process.execPath;
     const binPath = io.binPath ?? currentBin(io.env ?? process.env);
-    removeMenubarPlugin(configDir);
-    mkdirSync(dir, { recursive: true });
     const target = join(dir, PLUGIN_FILE);
     const tmp = `${target}.tmp-${process.pid}`;
-    writeFileSync(tmp, pluginScript(nodePath, binPath), { mode: 0o755 });
-    chmodSync(tmp, 0o755);
-    renameSync(tmp, target);
-    mkdirSync(dirname(join(configDir, PLUGIN_RECORD)), { recursive: true });
+    try {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(tmp, pluginScript(nodePath, binPath), { mode: 0o755 });
+      chmodSync(tmp, 0o755);
+      renameSync(tmp, target);
+    } catch (err) {
+      // The existing plugin is still in place: only a finished write replaces it.
+      try {
+        rmSync(tmp, { force: true });
+      } catch {
+        // Nothing was written, or the folder itself is the problem.
+      }
+      io.stderr(`claude-usage menubar: could not write the plugin: ${(err as Error).message}\n`);
+      return 1;
+    }
+    if (recordedPlugin(configDir) !== target) removeMenubarPlugin(configDir);
+    mkdirSync(configDir, { recursive: true });
     writeFileSync(join(configDir, PLUGIN_RECORD), `${target}\n`, { mode: 0o600 });
-    io.stdout(`menubar: installed ${target}\n`);
-    if (!existsSync('/Applications/SwiftBar.app')) io.stdout('menubar: open SwiftBar to see it (brew install swiftbar)\n');
+    io.stdout(`menubar: installed ${target}\nmenubar: it appears when SwiftBar or xbar next refreshes its plugins\n`);
     return 0;
   }
   const plugin = flagValue(argv, '--plugin') ?? null;

@@ -459,10 +459,11 @@ export class LimitsPoller {
         ? { ...l, percent: null, severity: null, source: 'upstream', asOf: fetchedAt, stale: true }
         : { ...l, source: 'upstream', asOf: fetchedAt, stale: this.current.stale },
     );
-    this.voidRowsOfAnEndedWeek(limits, fetchedAtMs, now);
+    const weekEnded = this.voidRowsOfAnEndedWeek(limits, fetchedAtMs, now);
     const legacyWindows: Record<string, LegacyWindow> = {};
     for (const [key, win] of Object.entries(this.current.legacyWindows)) {
-      legacyWindows[key] = hasReset(win.resetsAt, now) ? { ...win, utilization: null } : win;
+      if (weekEnded && !OBSERVED_WINDOWS.some((w) => w.key === key)) legacyWindows[key] = { utilization: null, resetsAt: null };
+      else legacyWindows[key] = hasReset(win.resetsAt, now) ? { ...win, utilization: null } : win;
     }
     for (const w of OBSERVED_WINDOWS) {
       const obs = this.observed.get(w.id);
@@ -500,17 +501,18 @@ export class LimitsPoller {
    * upstream last described (a reset, a plan change, another account), those rows describe a
    * week that is over, so they are served as unknown rather than as a confident old number.
    */
-  private voidRowsOfAnEndedWeek(limits: NormalizedLimit[], fetchedAtMs: number, now: number): void {
-    if (!this.current.stale) return;
+  private voidRowsOfAnEndedWeek(limits: NormalizedLimit[], fetchedAtMs: number, now: number): boolean {
+    if (!this.current.stale) return false;
     const obs = this.observed.get('weekly_all');
-    if (obs === undefined || obs.resetsAtMs === null || !this.isFresh(obs, now) || obs.observedAt < fetchedAtMs) return;
+    if (obs === undefined || obs.resetsAtMs === null || !this.isFresh(obs, now) || obs.observedAt < fetchedAtMs) return false;
     const upstream = limits.find((l) => l.id === 'weekly_all');
     const upstreamReset = upstream?.resetsAt === null || upstream === undefined ? Number.NaN : Date.parse(upstream.resetsAt);
-    if (!Number.isFinite(upstreamReset) || Math.abs(upstreamReset - obs.resetsAtMs) <= SAME_WINDOW_TOLERANCE_MS) return;
+    if (!Number.isFinite(upstreamReset) || Math.abs(upstreamReset - obs.resetsAtMs) <= SAME_WINDOW_TOLERANCE_MS) return false;
     limits.forEach((l, i) => {
       if (OBSERVED_WINDOWS.some((w) => w.id === l.id)) return;
       limits[i] = { ...l, percent: null, severity: null, resetsAt: null, stale: true };
     });
+    return true;
   }
 
   /**
