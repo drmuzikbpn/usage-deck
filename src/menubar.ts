@@ -28,6 +28,12 @@ const DEFAULTS_BIN = '/usr/bin/defaults';
 
 const SHORT_LABELS: Record<string, string> = { session: '5h', weekly_all: '7d' };
 const COLORS: Record<LimitStatus, string | null> = { ok: null, warn: 'orange', critical: 'red' };
+/**
+ * The title keeps the menu bar's own text colour: coloured text is unreadable on a tinted menu
+ * bar (red on blue was). Status goes in a leading dot instead, which reads on any background.
+ * Dropdown rows keep their colours; the menu itself has a plain background.
+ */
+const DOTS: Record<LimitStatus, string> = { ok: '', warn: '🟠 ', critical: '🔴 ' };
 
 export type MenubarState =
   | { running: false }
@@ -67,7 +73,7 @@ function action(label: string, plugin: string | null, args: readonly string[]): 
 export function renderMenubar(state: MenubarState, now: number, plugin: string | null): string {
   const lines: string[] = [];
   if (!state.running) {
-    lines.push('Claude ⏹ | color=red');
+    lines.push('🔴 Claude ⏹');
     lines.push('---');
     lines.push('claude-usage: stopped');
     lines.push(action('Start daemon', plugin, ['service', 'start']));
@@ -90,9 +96,9 @@ export function renderMenubar(state: MenubarState, now: number, plugin: string |
     }
     if (Number.isFinite(newest) && now - newest > MENUBAR_STALE_MS) stale = true;
 
-    const overall = COLORS[summary?.status.overall ?? 'ok'];
-    const title = parts.length === 0 ? 'Claude …' : `${parts.join(' · ')}${stale ? ' ⚠︎' : ''}`;
-    lines.push(`${clean(title)}${overall === null ? '' : ` | color=${overall}`}`);
+    const dot = DOTS[summary?.status.overall ?? 'ok'];
+    const title = parts.length === 0 ? 'Claude …' : `${dot}${parts.join(' · ')}${stale ? ' ⚠︎' : ''}`;
+    lines.push(clean(title));
     lines.push('---');
     lines.push(clean(`claude-usage: running (${state.version === '' ? 'version unknown' : state.version})`));
     if (summary === null) lines.push('Not answering | color=red');
