@@ -93,9 +93,24 @@ describe('renderMenubar', () => {
 
   it('gives every info row an action, so none is drawn as a faint disabled row', () => {
     const text = renderMenubar({ running: true, version: '1', summary: summary([limit('session', 5), limit('weekly_scoped:fable', 7)]) }, NOW, PLUGIN);
-    const rows = text.split('\n').slice(2).filter((l) => l !== '' && l !== '---');
+    const rows = text.split('\n').slice(2).filter((l) => l !== '' && l !== '---' && !l.startsWith('About') && !l.startsWith('--'));
     expect(rows.length).toBeGreaterThan(3);
     for (const row of rows) expect(row).toMatch(/\| (refresh=true|bash=)/);
+  });
+
+  it('has an About submenu with the links and the disclaimer', () => {
+    const text = renderMenubar({ running: true, version: '0.1.165', summary: null }, NOW, PLUGIN);
+    expect(text).toContain('About Usage Deck\n--claude-usage 0.1.165 | refresh=true\n--Not affiliated with Anthropic');
+    expect(text).toContain('--GitHub | href=https://github.com/drmuzikbpn/usage-deck');
+    expect(text).toContain('--iPhone and Apple Watch app | href=https://apps.apple.com/us/app/usage-deck/id6818383053');
+  });
+
+  it("fills in the plugin's metadata for SwiftBar's About window", () => {
+    const script = pluginScript('/n', '/b');
+    expect(script).toContain('# <xbar.title>Usage Deck</xbar.title>');
+    expect(script).toContain('# <xbar.author>Even Seal Productions</xbar.author>');
+    expect(script).toContain('Not affiliated with, endorsed by, or sponsored by Anthropic.</xbar.desc>');
+    expect(script).toContain('# <xbar.abouturl>https://github.com/drmuzikbpn/usage-deck</xbar.abouturl>');
   });
 
   it('lists the other limits, so a dot they cause is explained', () => {

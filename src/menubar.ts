@@ -25,6 +25,10 @@ export const PLUGIN_MARKER = '# claude-usage menubar plugin';
 /** `<configDir>/menubar-plugin` holds the absolute path `--install` wrote to. */
 export const PLUGIN_RECORD = 'menubar-plugin';
 const DEFAULTS_BIN = '/usr/bin/defaults';
+export const REPO_URL = 'https://github.com/drmuzikbpn/usage-deck';
+export const APP_STORE_URL = 'https://apps.apple.com/us/app/usage-deck/id6818383053';
+export const ABOUT_DESC =
+  'Your Claude account limits and the claude-usage service, in the menu bar. Works with Claude Code. Not affiliated with, endorsed by, or sponsored by Anthropic.';
 
 const SHORT_LABELS: Record<string, string> = { session: '5h', weekly_all: '7d' };
 /**
@@ -124,6 +128,12 @@ export function renderMenubar(state: MenubarState, now: number, plugin: string |
     lines.push(action('Stop daemon', plugin, ['service', 'stop']));
   }
   lines.push('Refresh | refresh=true');
+  lines.push('---');
+  lines.push('About Usage Deck');
+  lines.push(`--${clean(state.running ? `claude-usage ${state.version}` : 'claude-usage')} | refresh=true`);
+  lines.push('--Not affiliated with Anthropic | refresh=true');
+  lines.push(`--GitHub | href=${REPO_URL}`);
+  lines.push(`--iPhone and Apple Watch app | href=${APP_STORE_URL}`);
   return `${lines.join('\n')}\n`;
 }
 
@@ -165,7 +175,11 @@ export function pluginScript(nodePath: string, binPath: string): string {
     '#!/bin/sh',
     PLUGIN_MARKER,
     '# Written by `claude-usage menubar --install`; removed by `claude-usage uninstall`.',
-    '# <xbar.title>Claude usage</xbar.title>',
+    '# <xbar.title>Usage Deck</xbar.title>',
+    '# <xbar.author>Even Seal Productions</xbar.author>',
+    '# <xbar.author.github>drmuzikbpn</xbar.author.github>',
+    `# <xbar.desc>${ABOUT_DESC}</xbar.desc>`,
+    `# <xbar.abouturl>${REPO_URL}</xbar.abouturl>`,
     '# <swiftbar.hideRunInTerminal>true</swiftbar.hideRunInTerminal>',
     `if [ "$#" -gt 0 ]; then exec ${shQuote(nodePath)} ${shQuote(binPath)} "$@"; fi`,
     `exec ${shQuote(nodePath)} ${shQuote(binPath)} menubar --plugin "$0"`,
