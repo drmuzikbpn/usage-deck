@@ -114,8 +114,13 @@ export function renderMenubar(state: MenubarState, now: number, plugin: string |
     // Every other limit too: they count toward the title's dot, so it must be explainable here.
     for (const limit of summary?.limits.limits ?? []) {
       if ((HEADLINE_IDS as readonly string[]).includes(limit.id)) continue;
-      const pct = limit.percent === null ? '?%' : `${limit.percent}%`;
       const label = limit.scope?.model ?? limit.id.replace(/^weekly_scoped:/, '');
+      if (limit.percent === null) {
+        // Unknown is not fine: a green dot beside `?%` reads as a contradiction.
+        lines.push(info(`⚪ ${label}: waiting for a reading`));
+        continue;
+      }
+      const pct = `${limit.percent}%`;
       const dot = DOTS[summary?.status.byId[limit.id] ?? 'ok'];
       lines.push(info(`${dot}${label}: ${pct}${resets(limit.resetsAt, now)}${limit.stale === true ? ' ⚠︎' : ''}`));
     }
