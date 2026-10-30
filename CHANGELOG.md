@@ -47,7 +47,7 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ### Added
 - **macOS menu-bar item.** `claude-usage menubar --install` adds a [SwiftBar](https://swiftbar.app)
-  plugin that shows the 5-hour and 7-day percentages, with a 🟠/🔴 dot at your thresholds,
+  plugin that shows the 5-hour and 7-day percentages, with a 🟢/🟠/🔴 status dot,
   flags a stale reading, and shows the daemon as stopped, with Start/Stop in its menu.
   `claude-usage service start|stop|status` drives the launchd/systemd service directly.
   `uninstall` removes the plugin (§23.66).
