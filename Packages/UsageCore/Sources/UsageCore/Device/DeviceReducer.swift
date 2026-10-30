@@ -10,7 +10,6 @@ public struct DeviceReducer: Sendable {
     public private(set) var state: DeviceState
     /// The weak ETag to send on the next `/v1/sessions` poll.
     public private(set) var etag: String?
-    private var lastStatus = StatusDTO()
     private var thresholds = ThresholdsDTO()
     private let burn: BurnHistory
 
@@ -130,7 +129,6 @@ public struct DeviceReducer: Sendable {
     }
 
     public mutating func applySummary(_ summary: SummaryDTO, now: Date) {
-        lastStatus = summary.status
         thresholds = summary.thresholds
         state.limits = summary.toLimits()
         state.limitsFetchedAt = ISODate.parse(summary.fetchedAt)
@@ -171,7 +169,6 @@ public struct DeviceReducer: Sendable {
     }
 
     private mutating func applySnapshot(_ s: DaemonEvent.Snapshot, now: Date) {
-        lastStatus = s.status
         thresholds = s.thresholds
         etag = Self.weakETag(s.rev)
         state.name = s.name
@@ -203,14 +200,11 @@ public struct DeviceReducer: Sendable {
         }
     }
 
-    /// A bare `limits` payload has no status map: reuse the last one, else derive from thresholds.
+    /// A bare `limits` payload has no status map, so derive each status from the row itself.
+    /// The last summary's map must not be reused: it describes the old percents, so a week that
+    /// reset from 99% to 0% stayed red until the next snapshot.
     private func limitsOf(_ limits: [LimitDTO]) -> [Limit] {
-        limits.map { dto in
-            if let known = lastStatus.byId[dto.id] {
-                return dto.toModel(status: LimitStatusMapping.status(of: known))
-            }
-            return dto.toModel(status: LimitStatusMapping.status(for: dto, thresholds: thresholds))
-        }
+        limits.map { $0.toModel(status: LimitStatusMapping.status(for: $0, thresholds: thresholds)) }
     }
 
     static func weakETag(_ rev: Int64) -> String {
