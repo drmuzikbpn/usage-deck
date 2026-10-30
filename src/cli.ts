@@ -24,6 +24,8 @@ export interface CliIO {
   env?: NodeJS.ProcessEnv;
   /** Injected in tests so no launchctl/systemctl ever runs. */
   service?: Pick<ServiceManager, 'start' | 'stop' | 'status'>;
+  /** How long `service start|stop` waits for the daemon to come up or go; 0 in tests. */
+  serviceWaitMs?: number;
 }
 
 /** Subcommands other waves own; they exist so `help` is honest about the surface. */
@@ -385,6 +387,15 @@ async function w6ServiceDiagnostics(io: W6Io): Promise<void> {
 }
 // ───────────────────────── end W6 (feat/install) block ─────────────────────────
 
+const SERVICE_WAIT_MS = 3000;
+const SERVICE_POLL_MS = 100;
+
+async function waitUntil(done: () => boolean, timeoutMs: number): Promise<void> {
+  for (let left = timeoutMs; left > 0 && !done(); left -= SERVICE_POLL_MS) {
+    await new Promise((resolve) => setTimeout(resolve, SERVICE_POLL_MS));
+  }
+}
+
 /** `claude-usage service <start|stop|status>` (§23.66): the menu-bar item's Start/Stop. */
 async function cmdService(argv: readonly string[], io: Required<Pick<CliIO, 'stdout' | 'stderr'>> & CliIO): Promise<number> {
   const action = argv[0];
@@ -404,8 +415,16 @@ async function cmdService(argv: readonly string[], io: Required<Pick<CliIO, 'std
       io.stderr('claude-usage: the service is not installed; run `claude-usage install`\n');
       return 1;
     }
+    const configDir = io.configDir ?? resolveConfigDir();
+    const before = readDaemonInfo(configDir);
     if (action === 'start') await service.start();
     else await service.stop();
+    // The manager returns before the process has come up or gone. Wait, so the menu bar's
+    // refresh right after Start or Stop shows the new state, not the old one.
+    await waitUntil(() => {
+      const info = action === 'start' ? readDaemonInfo(configDir) : before;
+      return action === 'start' ? info !== null && isPidAlive(info.pid) : info === null || !isPidAlive(info.pid);
+    }, io.serviceWaitMs ?? SERVICE_WAIT_MS);
     io.stdout(`service: ${await service.status()}\n`);
     return 0;
   } catch (err) {

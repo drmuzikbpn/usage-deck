@@ -2014,6 +2014,8 @@ change, each fail a named test.
   PluginDirectory`, and records its path in `<configDir>/menubar-plugin`. The script runs node
   and `current/bin/claude-usage` by absolute path, since SwiftBar plugins get no login PATH.
   With arguments, the script passes them straight to the CLI; that is how menu actions run.
+  If the recorded node path is gone it falls back to `command -v node`, and failing that prints
+  a menu saying to re-run `--install`. A reinstall replaces the file only after a finished write.
 - **What it shows.** The title shows the `session` and `weekly_all` percentages in the menu
   bar's own text colour, never a set colour, because red text was unreadable on a tinted menu
   bar. A leading 🟢/🟠/🔴 dot carries the overall status. Dropdown rows get the same
@@ -2025,7 +2027,8 @@ change, each fail a named test.
   answer within 2 s shows "Not answering". `menubar` always exits 0 and never prints the token.
 - **Start/Stop.** `claude-usage service start|stop|status` wraps the existing `ServiceManager`
   (launchd `bootstrap` + `kickstart`, or `bootout`; systemd `start`/`stop`). It refuses with a
-  pointer to `install` when no service is installed.
+  pointer to `install` when no service is installed. Start and stop wait up to 3 s for the
+  daemon to appear or go, so the refresh that follows shows the new state.
 - **Removal.** `menubar --uninstall` and `uninstall` delete the recorded file, but only when it
   still carries the `# claude-usage menubar plugin` marker.
 

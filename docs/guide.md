@@ -255,11 +255,12 @@ claude-usage menubar --install # or: --install --dir <folder>
 ```
 
 The menu bar shows `5h 42% · 7d 61%` in the menu bar's own text colour, with a 🟢, 🟠 or 🔴
-dot in front for fine, warn and critical, and `⚠︎` when the newest reading is over 15 minutes old. When
+dot in front for fine, warn and critical, and `⚠︎` when the newest reading is over 15 minutes old; ⚪ and `—` mean there is no number yet. When
 the daemon is down it shows `🔴 Claude ⏹`.
 The menu lists every limit with its reset time (`⚪ … waiting for a reading` when there is no
 number yet) and has **Start daemon** / **Stop daemon**,
-which run `claude-usage service start|stop`. It refreshes every minute. The plugin calls node
+which run `claude-usage service start|stop`. (`service status` is there too, and all three work
+on Linux as well.) It refreshes every minute. The plugin calls node
 and the `current` bin by absolute path, so it keeps working across auto-updates.
 **About Usage Deck** in the menu has the version, the disclaimer and links; SwiftBar's own
 About window shows the same details once you re-run `--install` on an older plugin.
