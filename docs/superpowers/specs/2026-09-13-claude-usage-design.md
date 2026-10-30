@@ -2001,3 +2001,27 @@ expired and was not persisted.
 **Test-first, per Part III:** `test/limits-observed.test.ts`. Fails against §23.64's code.
 Mutation-checked: limiting `dropped` to same-window moves, and ignoring a `resets_at`-only
 change, each fail a named test.
+
+### §23.66 A menu-bar item for the daemon (2026-10-30)
+
+**Why:** on 2026-10-17 a clean SIGTERM left the daemon down, and nobody noticed. launchd's
+`KeepAlive` restarts only on a non-zero exit, and the Android app sat on WAITING FOR MACHINE
+(issue #60).
+
+- **A SwiftBar plugin, not an app.** `claude-usage menubar` prints SwiftBar/xbar plugin
+  output. `menubar --install [--dir <d>]` writes `claude-usage.1m.sh` (mode 0755, atomic
+  rename) into SwiftBar's plugin folder, read with `/usr/bin/defaults read com.ameba.SwiftBar
+  PluginDirectory`, and records its path in `<configDir>/menubar-plugin`. The script runs node
+  and `current/bin/claude-usage` by absolute path, since SwiftBar plugins get no login PATH.
+  With arguments, the script passes them straight to the CLI; that is how menu actions run.
+- **What it shows.** The title shows the `session` and `weekly_all` percentages, coloured by
+  the overall status. `⚠︎` means a row is `stale` or the newest `asOf` is over 15 minutes old.
+  A daemon with no live pid in `daemon.json` shows as stopped. One that has a pid but does not
+  answer within 2 s shows "Not answering". `menubar` always exits 0 and never prints the token.
+- **Start/Stop.** `claude-usage service start|stop|status` wraps the existing `ServiceManager`
+  (launchd `bootstrap` + `kickstart`, or `bootout`; systemd `start`/`stop`). It refuses with a
+  pointer to `install` when no service is installed.
+- **Removal.** `menubar --uninstall` and `uninstall` delete the recorded file, but only when it
+  still carries the `# claude-usage menubar plugin` marker.
+
+**Tests:** `test/menubar.test.ts`, plus the uninstall case in `test/install/uninstall.test.ts`.

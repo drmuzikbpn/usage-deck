@@ -1,0 +1,229 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Even Seal Productions
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, isAbsolute, join } from 'node:path';
+import { DaemonClient, isPidAlive, readDaemonInfo } from './clients/http.js';
+import { resolveConfigDir } from './config.js';
+import { HEADLINE_IDS, type SummaryBody } from './hook.js';
+import type { LimitStatus } from './limits/status.js';
+import { defaultExec, type ExecRunner } from './service/index.js';
+
+/**
+ * §23.66: the macOS menu-bar item, as a SwiftBar (or xbar) plugin. `claude-usage menubar`
+ * prints the plugin's output; `--install` writes a small shell script into SwiftBar's plugin
+ * folder that runs it every minute. The script calls node and the `current` bin by absolute
+ * path, because SwiftBar does not run plugins with the user's shell PATH.
+ */
+
+export const MENUBAR_TIMEOUT_MS = 2000;
+/** A reading older than this is called stale in the menu-bar title. */
+export const MENUBAR_STALE_MS = 15 * 60 * 1000;
+/** `<n>m` is SwiftBar's refresh interval, taken from the file name. */
+export const PLUGIN_FILE = 'claude-usage.1m.sh';
+/** Marks a plugin file as ours, so uninstall never removes someone else's. */
+export const PLUGIN_MARKER = '# claude-usage menubar plugin';
+/** `<configDir>/menubar-plugin` holds the absolute path `--install` wrote to. */
+export const PLUGIN_RECORD = 'menubar-plugin';
+const DEFAULTS_BIN = '/usr/bin/defaults';
+
+const SHORT_LABELS: Record<string, string> = { session: '5h', weekly_all: '7d' };
+const COLORS: Record<LimitStatus, string | null> = { ok: null, warn: 'orange', critical: 'red' };
+
+export type MenubarState =
+  | { running: false }
+  | { running: true; version: string; summary: SummaryBody | null };
+
+/** SwiftBar treats `|` as the start of its parameters; keep it out of menu text. */
+const clean = (text: string): string => text.replace(/\|/g, '/');
+
+function ago(ms: number): string {
+  const min = Math.max(0, Math.round(ms / 60000));
+  if (min < 1) return 'just now';
+  if (min < 60) return `${min}m ago`;
+  const h = Math.floor(min / 60);
+  return h < 48 ? `${h}h ${min % 60}m ago` : `${Math.floor(h / 24)}d ago`;
+}
+
+function resets(iso: string | null, now: number): string {
+  if (iso === null) return '';
+  const ms = Date.parse(iso) - now;
+  if (!Number.isFinite(ms)) return '';
+  if (ms <= 0) return ' · resetting';
+  const min = Math.round(ms / 60000);
+  const h = Math.floor(min / 60);
+  return ` · resets in ${h >= 24 ? `${Math.floor(h / 24)}d ${h % 24}h` : `${h}h ${min % 60}m`}`;
+}
+
+/** Single-quote for the plugin's `sh` script. */
+const shQuote = (s: string): string => `'${s.replace(/'/g, `'\\''`)}'`;
+
+function action(label: string, plugin: string | null, args: readonly string[]): string {
+  if (plugin === null) return `${label} | color=gray`;
+  const params = args.map((a, i) => `param${i + 1}=${a}`).join(' ');
+  return `${label} | bash="${plugin.replace(/"/g, '')}" ${params} terminal=false refresh=true`;
+}
+
+/** The plugin output: a title line, `---`, then the dropdown menu. Pure, for tests. */
+export function renderMenubar(state: MenubarState, now: number, plugin: string | null): string {
+  const lines: string[] = [];
+  if (!state.running) {
+    lines.push('Claude ⏹ | color=red');
+    lines.push('---');
+    lines.push('claude-usage: stopped');
+    lines.push(action('Start daemon', plugin, ['service', 'start']));
+  } else {
+    const parts: string[] = [];
+    const menu: string[] = [];
+    let newest = Number.NEGATIVE_INFINITY;
+    let stale = false;
+    const summary = state.summary;
+    for (const id of HEADLINE_IDS) {
+      const limit = summary?.limits.limits.find((l) => l.id === id);
+      if (limit === undefined) continue;
+      const pct = limit.percent === null ? '?%' : `${limit.percent}%`;
+      parts.push(`${SHORT_LABELS[id] ?? id} ${pct}`);
+      const color = COLORS[summary?.status.byId[id] ?? 'ok'];
+      menu.push(`${SHORT_LABELS[id] ?? id}: ${pct}${resets(limit.resetsAt, now)}${color === null ? '' : ` | color=${color}`}`);
+      if (limit.stale === true) stale = true;
+      const at = typeof limit.asOf === 'string' ? Date.parse(limit.asOf) : Number.NaN;
+      if (Number.isFinite(at)) newest = Math.max(newest, at);
+    }
+    if (Number.isFinite(newest) && now - newest > MENUBAR_STALE_MS) stale = true;
+
+    const overall = COLORS[summary?.status.overall ?? 'ok'];
+    const title = parts.length === 0 ? 'Claude …' : `${parts.join(' · ')}${stale ? ' ⚠︎' : ''}`;
+    lines.push(`${clean(title)}${overall === null ? '' : ` | color=${overall}`}`);
+    lines.push('---');
+    lines.push(clean(`claude-usage: running (${state.version === '' ? 'version unknown' : state.version})`));
+    if (summary === null) lines.push('Not answering | color=red');
+    lines.push(...menu.map((m) => (m.includes(' | ') ? m : clean(m))));
+    if (Number.isFinite(newest)) {
+      lines.push(`${stale ? 'Stale: updated' : 'Updated'} ${ago(now - newest)}${stale ? ' | color=orange' : ''}`);
+    } else if (parts.length > 0 && stale) {
+      lines.push('Stale reading | color=orange');
+    }
+    lines.push('---');
+    lines.push(action('Stop daemon', plugin, ['service', 'stop']));
+  }
+  lines.push('Refresh | refresh=true');
+  return `${lines.join('\n')}\n`;
+}
+
+function isSummary(v: unknown): v is SummaryBody {
+  if (typeof v !== 'object' || v === null) return false;
+  const rec = v as Record<string, unknown>;
+  const limits = rec['limits'] as { limits?: unknown } | null | undefined;
+  return typeof limits === 'object' && limits !== null && Array.isArray(limits.limits) && typeof rec['status'] === 'object' && rec['status'] !== null;
+}
+
+export interface MenubarIO {
+  stdout: (text: string) => void;
+  stderr: (text: string) => void;
+  configDir?: string;
+  client?: { get(path: string, opts?: { timeoutMs?: number }): Promise<unknown> };
+  env?: NodeJS.ProcessEnv;
+  exec?: ExecRunner;
+  now?: number;
+  nodePath?: string;
+  binPath?: string;
+}
+
+/** What the plugin shows right now. Never throws: SwiftBar would show the stack instead. */
+export async function readMenubarState(io: Pick<MenubarIO, 'configDir' | 'client'>): Promise<MenubarState> {
+  const configDir = io.configDir ?? resolveConfigDir();
+  const info = readDaemonInfo(configDir);
+  if (info === null || !isPidAlive(info.pid)) return { running: false };
+  try {
+    const client = io.client ?? new DaemonClient({ configDir, timeoutMs: MENUBAR_TIMEOUT_MS });
+    const body = await client.get('/v1/summary', { timeoutMs: MENUBAR_TIMEOUT_MS });
+    return { running: true, version: info.version, summary: isSummary(body) ? body : null };
+  } catch {
+    return { running: true, version: info.version, summary: null };
+  }
+}
+
+export function pluginScript(nodePath: string, binPath: string): string {
+  return [
+    '#!/bin/sh',
+    PLUGIN_MARKER,
+    '# Written by `claude-usage menubar --install`; removed by `claude-usage uninstall`.',
+    '# <xbar.title>Claude usage</xbar.title>',
+    '# <swiftbar.hideRunInTerminal>true</swiftbar.hideRunInTerminal>',
+    `if [ "$#" -gt 0 ]; then exec ${shQuote(nodePath)} ${shQuote(binPath)} "$@"; fi`,
+    `exec ${shQuote(nodePath)} ${shQuote(binPath)} menubar --plugin "$0"`,
+    '',
+  ].join('\n');
+}
+
+async function swiftBarPluginDir(exec: ExecRunner): Promise<string | null> {
+  const r = await exec(DEFAULTS_BIN, ['read', 'com.ameba.SwiftBar', 'PluginDirectory']);
+  const dir = r.stdout.trim();
+  return r.code === 0 && isAbsolute(dir) ? dir : null;
+}
+
+/** Remove the plugin `--install` recorded, if it is still ours. Returns the removed path. */
+export function removeMenubarPlugin(configDir: string): string | null {
+  const record = join(configDir, PLUGIN_RECORD);
+  let path: string;
+  try {
+    path = readFileSync(record, 'utf8').trim();
+  } catch {
+    return null;
+  }
+  rmSync(record, { force: true });
+  try {
+    if (!isAbsolute(path) || !readFileSync(path, 'utf8').includes(PLUGIN_MARKER)) return null;
+  } catch {
+    return null;
+  }
+  rmSync(path, { force: true });
+  return path;
+}
+
+function flagValue(argv: readonly string[], name: string): string | undefined {
+  const i = argv.indexOf(name);
+  return i >= 0 ? argv[i + 1] : undefined;
+}
+
+/** `claude-usage menubar [--install [--dir <d>] | --uninstall | --plugin <path>]`. */
+export async function runMenubar(argv: readonly string[], io: MenubarIO): Promise<number> {
+  const configDir = io.configDir ?? resolveConfigDir();
+  if (argv.includes('--uninstall')) {
+    const removed = removeMenubarPlugin(configDir);
+    io.stdout(removed === null ? 'menubar: no plugin installed\n' : `menubar: removed ${removed}\n`);
+    return 0;
+  }
+  if (argv.includes('--install')) {
+    const dir = flagValue(argv, '--dir') ?? (await swiftBarPluginDir(io.exec ?? defaultExec));
+    if (dir === undefined || dir === null) {
+      io.stderr(
+        'claude-usage menubar: SwiftBar has no plugin folder yet. Install it (brew install swiftbar),\n' +
+          'open it once and pick a folder, or pass --dir <folder>.\n',
+      );
+      return 1;
+    }
+    if (!isAbsolute(dir)) {
+      io.stderr('claude-usage menubar: --dir must be an absolute path\n');
+      return 1;
+    }
+    const { currentBin } = await import('./paths.js');
+    const nodePath = io.nodePath ?? process.execPath;
+    const binPath = io.binPath ?? currentBin(io.env ?? process.env);
+    removeMenubarPlugin(configDir);
+    mkdirSync(dir, { recursive: true });
+    const target = join(dir, PLUGIN_FILE);
+    const tmp = `${target}.tmp-${process.pid}`;
+    writeFileSync(tmp, pluginScript(nodePath, binPath), { mode: 0o755 });
+    chmodSync(tmp, 0o755);
+    renameSync(tmp, target);
+    mkdirSync(dirname(join(configDir, PLUGIN_RECORD)), { recursive: true });
+    writeFileSync(join(configDir, PLUGIN_RECORD), `${target}\n`, { mode: 0o600 });
+    io.stdout(`menubar: installed ${target}\n`);
+    if (!existsSync('/Applications/SwiftBar.app')) io.stdout('menubar: open SwiftBar to see it (brew install swiftbar)\n');
+    return 0;
+  }
+  const plugin = flagValue(argv, '--plugin') ?? null;
+  const state = await readMenubarState({ configDir, ...(io.client === undefined ? {} : { client: io.client }) });
+  io.stdout(renderMenubar(state, io.now ?? Date.now(), plugin !== null && isAbsolute(plugin) ? plugin : null));
+  return 0;
+}

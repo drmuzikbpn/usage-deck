@@ -3,6 +3,7 @@
 import { existsSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { daemonFilePath } from '../clients/http.js';
+import { removeMenubarPlugin } from '../menubar.js';
 import { dataDir, macLogDir } from '../paths.js';
 import { removeMcpServer } from './claude-json.js';
 import { resolveContext, type InstallIO } from './context.js';
@@ -74,6 +75,9 @@ export async function runUninstall(argv: readonly string[], io: InstallIO): Prom
   io.stdout(`mcp:     ${mcp.changed ? 'removed' : 'nothing registered'}\n`);
 
   if (unlinkFromPath(ctx.env)) io.stdout(`path:    removed ${pathLinkFile(ctx.env)}\n`);
+
+  const menubar = removeMenubarPlugin(ctx.configDir);
+  if (menubar !== null) io.stdout(`menubar: removed ${menubar}\n`);
 
   rmSync(daemonFilePath(ctx.configDir), { force: true });
 

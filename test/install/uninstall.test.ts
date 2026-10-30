@@ -12,6 +12,7 @@ import { pathLinkFile } from '../../src/install/path-link.js';
 import { backupPathFor } from '../../src/install/settings-merge.js';
 import { claudeJsonPath, currentBin, dataDir, settingsPath } from '../../src/paths.js';
 import { daemonFilePath } from '../../src/clients/http.js';
+import { PLUGIN_FILE, runMenubar } from '../../src/menubar.js';
 import { cleanupAllTempHomes, fakeExec, fakePackage, FakeService, tempHome } from './helpers.js';
 
 afterAll(cleanupAllTempHomes);
@@ -97,6 +98,16 @@ describe('install → uninstall round-trip (§23.12)', () => {
     await runUninstall([], b.io);
     expect(() => readlinkSync(pathLinkFile(b.env))).toThrow();
     expect(b.out).toContain(`path:    removed ${pathLinkFile(b.env)}`);
+  });
+
+  it('removes the menu-bar plugin it installed (§23.66)', async () => {
+    const b = bed('settings-empty.json');
+    await runInstall(['--yes'], b.io);
+    const dir = join(b.env['HOME'] ?? '', 'SwiftBar');
+    expect(await runMenubar(['--install', '--dir', dir], { ...b.io, configDir: b.configDir })).toBe(0);
+    await runUninstall([], b.io);
+    expect(existsSync(join(dir, PLUGIN_FILE))).toBe(false);
+    expect(b.out).toContain(`menubar: removed ${join(dir, PLUGIN_FILE)}`);
   });
 
   it('removes the MCP entry', async () => {
