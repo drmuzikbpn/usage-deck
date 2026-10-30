@@ -246,6 +246,21 @@ overwriting it:
                   "command": "/Users/you/.local/share/claude-usage/current/bin/claude-usage statusline" } }
 ```
 
+### Menu bar (macOS)
+
+```bash
+brew install swiftbar          # open it once and pick a plugin folder
+claude-usage menubar --install # or: --install --dir <folder>
+```
+
+The menu bar shows `5h 42% · 7d 61%`, amber/red above your thresholds, and `⚠︎` when the
+newest reading is over 15 minutes old. When the daemon is down it shows `Claude ⏹` in red.
+The menu lists each limit with its reset time and has **Start daemon** / **Stop daemon**,
+which run `claude-usage service start|stop`. It refreshes every minute. The plugin calls node
+and the `current` bin by absolute path, so it keeps working across auto-updates.
+`claude-usage menubar --uninstall` removes it, and `uninstall` does too. xbar works as well:
+pass `--dir` with xbar's plugin folder.
+
 ### Live limits: the feed install sets up
 
 Anthropic's usage endpoint allows this daemon only a few calls an hour, so the headline

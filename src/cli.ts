@@ -46,6 +46,8 @@ Usage: claude-usage <command> [options]
   rollback                          point "current" back at the previous version
   hook                              UserPromptSubmit hook (always exits 0)
   statusline                        one-line status for statusLine.command
+  service <start|stop|status>       start or stop the installed launchd/systemd service
+  menubar [--install [--dir <d>]]   macOS menu-bar item (SwiftBar plugin); --uninstall removes it
   observe                           forward statusline JSON's rate_limits to the daemon
   --version                         print the version
   help                              print this help
@@ -380,6 +382,35 @@ async function w6ServiceDiagnostics(io: W6Io): Promise<void> {
 }
 // ───────────────────────── end W6 (feat/install) block ─────────────────────────
 
+/** `claude-usage service <start|stop|status>` (§23.66): the menu-bar item's Start/Stop. */
+async function cmdService(argv: readonly string[], io: Required<Pick<CliIO, 'stdout' | 'stderr'>> & CliIO): Promise<number> {
+  const action = argv[0];
+  if (action !== 'start' && action !== 'stop' && action !== 'status') {
+    io.stderr('claude-usage: service needs start, stop or status\n');
+    return 1;
+  }
+  const { createServiceManager } = await import('./service/index.js');
+  const service = await createServiceManager(io.env === undefined ? {} : { env: io.env });
+  try {
+    const state = await service.status();
+    if (action === 'status') {
+      io.stdout(`service: ${state}\n`);
+      return state === 'running' ? 0 : 1;
+    }
+    if (state === 'not-installed') {
+      io.stderr('claude-usage: the service is not installed; run `claude-usage install`\n');
+      return 1;
+    }
+    if (action === 'start') await service.start();
+    else await service.stop();
+    io.stdout(`service: ${await service.status()}\n`);
+    return 0;
+  } catch (err) {
+    io.stderr(`claude-usage: service ${action} failed: ${(err as Error).message}\n`);
+    return 1;
+  }
+}
+
 /** Subcommand dispatch. Returns the process exit code; never calls `process.exit`. */
 export async function run(argv: readonly string[], io: CliIO = {}): Promise<number> {
   const stdout = io.stdout ?? ((t: string) => process.stdout.write(t));
@@ -453,6 +484,18 @@ export async function run(argv: readonly string[], io: CliIO = {}): Promise<numb
         ...(io.env === undefined ? {} : { env: io.env }),
       };
       return runStatusline(slIo);
+    }
+    case 'service':
+      return cmdService(rest, base);
+    case 'menubar': {
+      const { runMenubar } = await import('./menubar.js');
+      return runMenubar(rest, {
+        stdout,
+        stderr,
+        ...(io.configDir === undefined ? {} : { configDir: io.configDir }),
+        ...(io.client === undefined ? {} : { client: io.client }),
+        ...(io.env === undefined ? {} : { env: io.env }),
+      });
     }
     case 'config': {
       // Never the bearer itself: this output ends up in terminals, bug reports and

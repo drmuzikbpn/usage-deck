@@ -46,6 +46,11 @@ All notable changes to this project are documented here. Format: [Keep a Changel
   0.1.107, run `launchctl kickstart gui/$(id -u)/com.github.drmuzikbpn.claude-usage`.
 
 ### Added
+- **macOS menu-bar item.** `claude-usage menubar --install` adds a [SwiftBar](https://swiftbar.app)
+  plugin that shows the 5-hour and 7-day percentages, turns amber/red at your thresholds,
+  flags a stale reading, and shows the daemon as stopped, with Start/Stop in its menu.
+  `claude-usage service start|stop|status` drives the launchd/systemd service directly.
+  `uninstall` removes the plugin (§23.66).
 - **iPhone app over Wi-Fi, no Tailscale needed.** A new `lan` bind keyword selects this
   machine's private Wi-Fi/Ethernet address and follows it across network changes. Turn it
   on with `install --lan` (an interactive install asks, default yes) or
