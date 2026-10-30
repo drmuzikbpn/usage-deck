@@ -130,7 +130,7 @@ class DeckGraph(private val app: Application) {
         .stateIn(scope, SharingStarted.Eagerly, TeamState())
 
     /** "Try the demo": made-up machines for anyone without a daemon, App Review included. */
-    val demo: DemoDeck = DemoDeck(clock, scope)
+    val demo: DemoDeck = DemoDeck(clock, scope, burn)
 
     /** What the screens draw: the demo while it runs, the paired machines otherwise. */
     val team: StateFlow<TeamState> = combine(liveTeam, demo.team) { live, shown -> shown ?: live }

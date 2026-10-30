@@ -4,6 +4,7 @@
 package com.evenseal.usagedeck.demo
 
 import com.evenseal.usagedeck.core.Clock
+import com.evenseal.usagedeck.core.model.BurnHistory
 import com.evenseal.usagedeck.core.model.Discovered
 import com.evenseal.usagedeck.core.model.Health
 import com.evenseal.usagedeck.core.model.LastTool
@@ -19,8 +20,10 @@ import com.evenseal.usagedeck.core.model.TeamState
 import com.evenseal.usagedeck.core.model.Tokens
 import com.evenseal.usagedeck.core.model.User
 import com.evenseal.usagedeck.core.pause.PauseTarget
+import com.evenseal.usagedeck.ui.BurnKeys
 import java.time.Duration
 import java.time.Instant
+import kotlin.math.cos
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
@@ -40,7 +43,7 @@ import kotlinx.coroutines.flow.stateIn
  * Pausing here only changes what is drawn; nothing is sent anywhere.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
-class DemoDeck(private val clock: Clock, scope: CoroutineScope) {
+class DemoDeck(private val clock: Clock, scope: CoroutineScope, private val burn: BurnHistory) {
     private val _active = MutableStateFlow(false)
     val active: StateFlow<Boolean> = _active.asStateFlow()
 
@@ -52,18 +55,22 @@ class DemoDeck(private val clock: Clock, scope: CoroutineScope) {
             if (!on) {
                 flowOf(null)
             } else {
-                combine(ticks(), paused) { now, rules -> DemoData.team(now, rules) }
+                combine(ticks(), paused) { now, rules ->
+                    DemoData.team(now, rules).also { DemoBurn.record(burn, it, now) }
+                }
             }
         }
         .stateIn(scope, SharingStarted.Eagerly, null)
 
     fun start() {
+        DemoBurn.seed(burn, clock.now())
         _active.value = true
     }
 
     fun stop() {
         _active.value = false
         paused.value = emptyMap()
+        DemoBurn.forget(burn, clock.now())
     }
 
     /** Handles a soft-pause gesture while the demo runs; false hands it to the real controller. */
@@ -88,6 +95,46 @@ class DemoDeck(private val clock: Clock, scope: CoroutineScope) {
 
     private companion object {
         const val TICK_MILLIS = 5_000L
+    }
+}
+
+/**
+ * Made-up token spend for the rates and sparklines, which read [BurnHistory] rather than the team.
+ * Each session swings between half and one and a half times its own pace, so the charts move.
+ */
+private object DemoBurn {
+    private val HISTORY = Duration.ofHours(5)
+    private const val SEED_STEP_SECONDS = 30L
+    private const val SWING_SECONDS = 420.0
+    private const val SWING = 0.5
+    private const val TOKENS_PER_PACE = 18_000.0
+
+    fun seed(burn: BurnHistory, now: Instant) {
+        val team = DemoData.team(now, emptyMap())
+        generateSequence(now.minus(HISTORY)) { it.plusSeconds(SEED_STEP_SECONDS) }
+            .takeWhile { !it.isAfter(now) }
+            .forEach { record(burn, team, it) }
+    }
+
+    fun record(burn: BurnHistory, team: TeamState, at: Instant) = team.machines.forEach { machine ->
+        machine.sessions.groupBy { it.projectKey }.forEach { (key, sessions) ->
+            sessions.forEach { burn.record(BurnKeys.session(machine.config.id, it.sessionId), at, spent(it, at)) }
+            burn.record(BurnKeys.project(machine.config.id, key), at, sessions.sumOf { spent(it, at) })
+        }
+    }
+
+    fun forget(burn: BurnHistory, now: Instant) = DemoData.team(now, emptyMap()).machines.forEach { machine ->
+        machine.sessions.forEach {
+            burn.forget(BurnKeys.session(machine.config.id, it.sessionId))
+            burn.forget(BurnKeys.project(machine.config.id, it.projectKey))
+        }
+    }
+
+    /** The integral of the session's swinging pace, so it only ever rises. */
+    private fun spent(session: Session, at: Instant): Long {
+        val seconds = at.epochSecond.toDouble()
+        val swing = SWING * SWING_SECONDS * cos(seconds / SWING_SECONDS + session.sessionId.hashCode())
+        return ((seconds - swing) * session.tokens.input / TOKENS_PER_PACE).toLong()
     }
 }
 
