@@ -257,14 +257,13 @@ claude-usage menubar --install # or: --install --dir <folder>
 The menu bar shows `5h 42% · 7d 61%` in the menu bar's own text colour, with a 🟢, 🟠 or 🔴
 dot in front for fine, warn and critical, and `⚠︎` when the newest reading is over 15 minutes old; ⚪ and `—` mean there is no number yet. When
 the daemon is down it shows `🔴 Claude ⏹`.
-The menu lists every limit with its reset time, and each row opens a submenu with its status,
-exact reset, source and age. A `⚪ … waiting for a reading` row says why instead, such as the
-HTTP 429 Anthropic is returning and when the next try is. The menu also has **Start daemon** / **Stop daemon**,
+The menu lists every limit with its reset time. Click a row for a window with its status, exact
+reset, source and age. A `⚪ … waiting for a reading` row explains why instead, such as the HTTP
+429 Anthropic is returning and when the next try is. The menu also has **Start daemon** / **Stop daemon**,
 which run `claude-usage service start|stop`. (`service status` is there too, and all three work
 on Linux as well.) It refreshes every minute. The plugin calls node
 and the `current` bin by absolute path, so it keeps working across auto-updates.
-**About Usage Deck** in the menu has the version, the disclaimer and links; SwiftBar's own
-About window shows the same details once you re-run `--install` on an older plugin.
+**About Usage Deck** in the menu opens a window with the version, the disclaimer and links.
 `claude-usage menubar --uninstall` removes it, and `uninstall` does too. xbar works as well:
 pass `--dir` with xbar's plugin folder.
 

@@ -11,10 +11,12 @@ import {
   PLUGIN_FILE,
   PLUGIN_MARKER,
   PLUGIN_RECORD,
+  detailFor,
   pluginScript,
   removeMenubarPlugin,
   renderMenubar,
   runMenubar,
+  type MenubarState,
 } from '../src/menubar.js';
 import type { SummaryBody } from '../src/hook.js';
 import type { LimitsErrorInfo, NormalizedLimit } from '../src/limits/types.js';
@@ -107,65 +109,108 @@ describe('renderMenubar', () => {
       NOW,
       PLUGIN,
     );
-    expect(text).toContain('⚪ fable: waiting for a reading | refresh=true');
+    expect(text).toContain('⚪ fable: waiting for a reading | bash=');
     expect(text).not.toContain('?%');
   });
 
   it('treats an unknown headline limit the same way', () => {
     const text = renderMenubar({ running: true, version: '1', summary: summary([limit('weekly_all', null, { stale: true })]) }, NOW, PLUGIN);
-    expect(text).toContain('⚪ 7d: waiting for a reading | refresh=true');
+    expect(text).toContain('⚪ 7d: waiting for a reading | bash=');
   });
 
-  it('gives each limit a submenu of details', () => {
-    const resetsAt = new Date(NOW + 90 * 60000).toISOString();
-    const text = renderMenubar(
-      { running: true, version: '1', summary: summary([limit('session', 62, { resetsAt, source: 'statusline' })]) },
-      NOW,
-      PLUGIN,
-    );
-    expect(text).toContain('🟢 5h: 62% · resets in 1h 30m | refresh=true\n--Status: ok | refresh=true\n--Resets ');
-    expect(text).toContain("--From Claude Code's status line | refresh=true");
-    expect(text).toContain('--Read 2m ago | refresh=true');
+  it('never uses a submenu: every row opens one window', () => {
+    const text = renderMenubar({ running: true, version: '1', summary: summary([limit('session', 5), limit('weekly_scoped:fable', null)]) }, NOW, PLUGIN);
+    expect(text).not.toMatch(/^--[^-]/m);
+    expect(text).toContain(`5h: 5% | bash="${PLUGIN}" param1=menubar param2=--detail param3=session terminal=false`);
+    expect(text).toContain(`⚪ fable: waiting for a reading | bash="${PLUGIN}" param1=menubar param2=--detail param3=weekly_scoped:fable terminal=false`);
+    expect(text).toContain(`About Usage Deck | bash="${PLUGIN}" param1=menubar param2=--detail param3=about terminal=false`);
   });
 
-  describe('why a limit is waiting', () => {
-    const waiting = (error: LimitsErrorInfo | null) => {
-      const body = summary([limit('session', 5), limit('weekly_scoped:fable', null, { stale: true })]);
+  it('never puts an odd limit id into a menu parameter', () => {
+    const text = renderMenubar({ running: true, version: '1', summary: summary([limit('weird id" x', 5)]) }, NOW, PLUGIN);
+    expect(text).toContain('weird id" x: 5% | refresh=true');
+  });
+
+  describe('the detail window', () => {
+    const state = (error: LimitsErrorInfo | null): MenubarState => {
+      const body = summary([limit('session', 62, { source: 'statusline', resetsAt: new Date(NOW + 90 * 60000).toISOString() }), limit('weekly_scoped:fable', null, { stale: true })]);
       body.limits.error = error;
-      return renderMenubar({ running: true, version: '1', summary: body }, NOW, PLUGIN);
+      return { running: true, version: '0.1.170', summary: body };
     };
 
+    it('gives a limit its status, reset, source and age', () => {
+      const d = detailFor('session', state(null), NOW);
+      expect(d?.title).toBe('5h: 62%');
+      expect(d?.message).toMatch(/^Status: ok\nResets .+\nFrom Claude Code's status line\nRead 2m ago$/);
+    });
+
     it('names the 429 and the next try', () => {
-      const text = waiting({
-        code: 'rate_limited',
-        message: 'x',
-        retryAt: new Date(NOW + 600000).toISOString(),
-      });
-      expect(text).toContain('⚪ fable: waiting for a reading | refresh=true\n--Anthropic is returning HTTP 429 when we try to read this limit | refresh=true\n--Next try: ');
-      expect(text).not.toContain('Next try: soon');
+      const d = detailFor('weekly_scoped:fable', state({ code: 'rate_limited', message: 'x', retryAt: new Date(NOW + 600000).toISOString() }), NOW);
+      expect(d?.title).toBe('fable: waiting for a reading');
+      expect(d?.message).toContain('Anthropic is returning HTTP 429 when we try to read this limit\nNext try: ');
+      expect(d?.message).not.toContain('Next try: soon');
     });
 
     it('says soon once the retry time has passed', () => {
-      const text = waiting({ code: 'rate_limited', message: 'x', retryAt: new Date(NOW - 600000).toISOString() });
-      expect(text).toContain('--Next try: soon | refresh=true');
+      const d = detailFor('weekly_scoped:fable', state({ code: 'rate_limited', message: 'x', retryAt: new Date(NOW - 600000).toISOString() }), NOW);
+      expect(d?.message).toContain('Next try: soon');
     });
 
     it('passes on any other error with its hint', () => {
-      const text = waiting({ code: 'unauthorized', message: 'usage request rejected with 401', hint: 'run claude to log in' });
-      expect(text).toContain("--Can't read this limit: usage request rejected with 401 | refresh=true");
-      expect(text).toContain('--run claude to log in | refresh=true');
+      const d = detailFor('weekly_scoped:fable', state({ code: 'unauthorized', message: 'rejected with 401', hint: 'run claude' }), NOW);
+      expect(d?.message).toBe("Can't read this limit: rejected with 401\nrun claude");
     });
 
     it('still says something with no error', () => {
-      expect(waiting(null)).toContain("--No reading from Anthropic's usage endpoint yet | refresh=true");
+      expect(detailFor('weekly_scoped:fable', state(null), NOW)?.message).toBe("No reading from Anthropic's usage endpoint yet");
     });
-  });
 
-  it('has an About submenu with the links and the disclaimer', () => {
-    const text = renderMenubar({ running: true, version: '0.1.165', summary: null }, NOW, PLUGIN);
-    expect(text).toContain('About Usage Deck\n--claude-usage 0.1.165 | refresh=true\n--Not affiliated with Anthropic');
-    expect(text).toContain('--GitHub | href=https://github.com/drmuzikbpn/usage-deck');
-    expect(text).toContain('--iPhone and Apple Watch app | href=https://apps.apple.com/us/app/usage-deck/id6818383053');
+    it('is null for a limit that has gone', () => {
+      expect(detailFor('nope', state(null), NOW)).toBeNull();
+      expect(detailFor('session', { running: false }, NOW)).toBeNull();
+    });
+
+    it('has an About window with the disclaimer and links', () => {
+      const d = detailFor('about', state(null), NOW);
+      expect(d?.title).toBe('Usage Deck');
+      expect(d?.message).toContain('claude-usage 0.1.170');
+      expect(d?.message).toContain('Not affiliated with, endorsed by, or sponsored by Anthropic.');
+      expect(d?.links.map((l) => l.url)).toEqual(['https://github.com/drmuzikbpn/usage-deck', 'https://apps.apple.com/us/app/usage-deck/id6818383053']);
+    });
+
+    it('opens through osascript with the text as argv, never inside the script', async () => {
+      const calls: string[][] = [];
+      const c = capture();
+      const code = await runMenubar(['--detail', 'about'], {
+        ...c.io,
+        configDir: tempConfigDir(),
+        exec: async (file, args) => {
+          calls.push([file, ...args]);
+          return { code: 0, stdout: 'GitHub\n', stderr: '' };
+        },
+      });
+      expect(code).toBe(0);
+      const [osa, open] = calls;
+      expect(osa?.[0]).toBe('/usr/bin/osascript');
+      const script = (osa ?? []).filter((_, i, a) => a[i - 1] === '-e').join('\n');
+      expect(script).not.toContain('Anthropic');
+      expect(osa?.slice(-3)).toEqual(['GitHub', 'App Store', 'OK']);
+      expect(open).toEqual(['/usr/bin/open', 'https://github.com/drmuzikbpn/usage-deck']);
+    });
+
+    it('opens nothing else when the button is OK', async () => {
+      const calls: string[][] = [];
+      const c = capture();
+      await runMenubar(['--detail', 'about'], {
+        ...c.io,
+        configDir: tempConfigDir(),
+        exec: async (file, args) => {
+          calls.push([file, ...args]);
+          return { code: 0, stdout: 'OK\n', stderr: '' };
+        },
+      });
+      expect(calls).toHaveLength(1);
+    });
   });
 
   it("fills in the plugin's metadata for SwiftBar's About window", () => {

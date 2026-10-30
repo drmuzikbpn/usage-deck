@@ -2020,10 +2020,12 @@ change, each fail a named test.
   bar's own text colour, never a set colour, because red text was unreadable on a tinted menu
   bar. A leading 🟢/🟠/🔴 dot carries the overall status. Dropdown rows get the same
   per-limit dot and no `color=`, because the dropdown is translucent too. The dropdown lists
-  every limit, not only the headline pair, because all of them count toward the dot. Each limit row has
-  a submenu: status, reset time, source and age. A row with no number reads `⚪ <label>: waiting
-  for a reading`, and its submenu gives `limits.error` (the HTTP 429 and `retryAt`, or the error
-  message and hint). Info rows carry `refresh=true`, because
+  every limit, not only the headline pair, because all of them count toward the dot. Clicking a limit row
+  runs `menubar --detail <id>`, which opens one `display alert` window through `/usr/bin/osascript`
+  with status, reset time, source and age. No submenus. The text goes in as argv, so nothing is
+  parsed as AppleScript. A row with no number reads `⚪ <label>: waiting for a reading`, and its
+  window gives `limits.error` (the HTTP 429 and `retryAt`, or the error message and hint).
+  `About Usage Deck` opens the same kind of window, with GitHub and App Store buttons. Info rows carry `refresh=true`, because
   SwiftBar draws a row with no action as disabled, in faint grey. `⚠︎` means a row is `stale` or the newest `asOf` is over 15 minutes old.
   A daemon with no live pid in `daemon.json` shows as stopped. One that has a pid but does not
   answer within 2 s shows "Not answering". `menubar` always exits 0 and never prints the token.
