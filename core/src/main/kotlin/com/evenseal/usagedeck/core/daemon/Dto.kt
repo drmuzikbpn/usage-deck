@@ -61,7 +61,8 @@ data class LimitDto(
     val id: String,
     val kind: String,
     val group: String = "",
-    val percent: Int = 0,
+    /** `null` when the daemon has no current number for this row (§23.40, §23.67). */
+    val percent: Int? = null,
     val severity: String = "normal",
     val resetsAt: String? = null,
     val scope: LimitScopeDto? = null,

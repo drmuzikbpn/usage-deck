@@ -47,8 +47,9 @@ object Scenarios {
 
         override fun step(s: FakeState, n: Int, emit: (String, String) -> Unit) {
             val current = s.limit(WEEKLY) ?: return
-            if (current.percent >= CEILING) return
-            val percent = (current.percent + STEP).coerceAtMost(CEILING)
+            val now = current.percent ?: 0
+            if (now >= CEILING) return
+            val percent = (now + STEP).coerceAtMost(CEILING)
             s.setLimit(WEEKLY, current.copy(percent = percent))
             s.setStatus(
                 WEEKLY,

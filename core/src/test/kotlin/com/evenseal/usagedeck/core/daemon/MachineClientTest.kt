@@ -409,6 +409,21 @@ class MachineClientTest {
     }
 
     @Test
+    fun `a scoped limit with no number is left out rather than shown as 0 percent`() = runTest {
+        val f = fixture()
+        f.events.emit(Connection.Open)
+        f.events.emit(snapshot())
+        runCurrent()
+
+        val json = """{"id":"weekly_scoped:fable","kind":"weekly_scoped","percent":null,"severity":null}"""
+        val unknown = DaemonJson.decodeFromString<LimitDto>(json)
+        val weekly = LimitDto(id = "weekly_all", kind = "weekly_all", percent = 3)
+        f.events.emit(DaemonEvent.Limits(listOf(weekly, unknown), null, false))
+        runCurrent()
+        assertEquals(listOf("weekly_all"), f.client.state.value.limits.map { it.id })
+    }
+
+    @Test
     fun `limits and spend never move the sessions revision`() = runTest {
         val f = fixture()
         f.api.sessionsDto = SessionsDto(rev = 813, sessions = listOf(sessionDto("s1", 1_000)))

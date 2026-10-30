@@ -437,7 +437,7 @@ class MachineClient(
      * last summary's map must not be reused: it describes the old percents, so a week that
      * reset from 99% to 0% stayed red until the next snapshot.
      */
-    private fun limitsOf(limits: List<LimitDto>): List<Limit> = limits.map { dto ->
+    private fun limitsOf(limits: List<LimitDto>): List<Limit> = limits.withoutUnknownScoped().map { dto ->
         dto.toModel(statusFor(dto, thresholds))
     }
 
