@@ -91,6 +91,18 @@ describe('renderMenubar', () => {
     expect(text).not.toContain('color=orange');
   });
 
+  it('lists the other limits, so a dot they cause is explained', () => {
+    const body = summary([
+      limit('session', 0),
+      limit('weekly_all', 0),
+      limit('weekly_scoped:fable', 81, { stale: true }),
+    ]);
+    body.status = { byId: { session: 'ok', weekly_all: 'ok', 'weekly_scoped:fable': 'warn' }, overall: 'warn' };
+    const text = renderMenubar({ running: true, version: '1', summary: body }, NOW, PLUGIN);
+    expect(text.split('\n')[0]).toBe('🟠 5h 0% · 7d 0%');
+    expect(text).toContain('🟠 fable: 81% ⚠︎');
+  });
+
   it('flags a reading older than 15 minutes as stale', () => {
     const old = new Date(NOW - 42 * 60000).toISOString();
     const text = renderMenubar({ running: true, version: '1', summary: summary([limit('session', 10, { asOf: old })]) }, NOW, PLUGIN);
