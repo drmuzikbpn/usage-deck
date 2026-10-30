@@ -459,6 +459,7 @@ export class LimitsPoller {
         ? { ...l, percent: null, severity: null, source: 'upstream', asOf: fetchedAt, stale: true }
         : { ...l, source: 'upstream', asOf: fetchedAt, stale: this.current.stale },
     );
+    this.voidRowsOfAnEndedWeek(limits, fetchedAtMs, now);
     const legacyWindows: Record<string, LegacyWindow> = {};
     for (const [key, win] of Object.entries(this.current.legacyWindows)) {
       legacyWindows[key] = hasReset(win.resetsAt, now) ? { ...win, utilization: null } : win;
@@ -491,6 +492,25 @@ export class LimitsPoller {
     const headline = limits.filter((l) => OBSERVED_WINDOWS.some((w) => w.id === l.id));
     const stale = headline.length > 0 ? headline.some((l) => l.stale === true) : this.current.stale;
     return { ...this.current, limits, legacyWindows, stale };
+  }
+
+  /**
+   * §23.67: the statusline carries no scoped rows, so only upstream can update them. When
+   * upstream is failing and the statusline shows a different weekly window from the one
+   * upstream last described (a reset, a plan change, another account), those rows describe a
+   * week that is over, so they are served as unknown rather than as a confident old number.
+   */
+  private voidRowsOfAnEndedWeek(limits: NormalizedLimit[], fetchedAtMs: number, now: number): void {
+    if (!this.current.stale) return;
+    const obs = this.observed.get('weekly_all');
+    if (obs === undefined || obs.resetsAtMs === null || !this.isFresh(obs, now) || obs.observedAt < fetchedAtMs) return;
+    const upstream = limits.find((l) => l.id === 'weekly_all');
+    const upstreamReset = upstream?.resetsAt === null || upstream === undefined ? Number.NaN : Date.parse(upstream.resetsAt);
+    if (!Number.isFinite(upstreamReset) || Math.abs(upstreamReset - obs.resetsAtMs) <= SAME_WINDOW_TOLERANCE_MS) return;
+    limits.forEach((l, i) => {
+      if (OBSERVED_WINDOWS.some((w) => w.id === l.id)) return;
+      limits[i] = { ...l, percent: null, severity: null, resetsAt: null, stale: true };
+    });
   }
 
   /**

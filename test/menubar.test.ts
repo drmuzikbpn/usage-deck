@@ -91,6 +91,13 @@ describe('renderMenubar', () => {
     expect(text).not.toContain('color=orange');
   });
 
+  it('gives every info row an action, so none is drawn as a faint disabled row', () => {
+    const text = renderMenubar({ running: true, version: '1', summary: summary([limit('session', 5), limit('weekly_scoped:fable', 7)]) }, NOW, PLUGIN);
+    const rows = text.split('\n').slice(2).filter((l) => l !== '' && l !== '---');
+    expect(rows.length).toBeGreaterThan(3);
+    for (const row of rows) expect(row).toMatch(/\| (refresh=true|bash=)/);
+  });
+
   it('lists the other limits, so a dot they cause is explained', () => {
     const body = summary([
       limit('session', 0),

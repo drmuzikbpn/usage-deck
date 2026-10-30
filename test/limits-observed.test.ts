@@ -147,6 +147,46 @@ describe('LimitsPoller.observe (§23.36)', () => {
     expect(h.poller.snapshot().stale).toBe(true);
   });
 
+  describe('a new week while upstream is failing (§23.67)', () => {
+    const start = async (weeklyResetMs: number) => {
+      const h = harness({ upstreamBody: () => upstreamResettingAt(EPOCH + 3 * 3_600_000, weeklyResetMs) });
+      h.poller.start();
+      await flush();
+      return h;
+    };
+    const fail = async (h: Awaited<ReturnType<typeof start>>) => {
+      h.setFailing(true);
+      await h.timers.advance(OBSERVED_UPSTREAM_INTERVAL_MS + INTERVAL);
+      await flush();
+      h.poller.stop();
+    };
+
+    it('serves the scoped rows as unknown once the statusline names another week', async () => {
+      const h = await start(EPOCH + 2 * 86_400_000);
+      expect(byId(h.poller, 'weekly_scoped:fable')?.percent).not.toBeNull();
+      await fail(h);
+      expect(h.poller.observe(rateLimits(0, 0)).accepted).toBe(true); // resets at EPOCH + 5d
+      expect(byId(h.poller, 'weekly_scoped:fable')).toMatchObject({ percent: null, severity: null, resetsAt: null, stale: true });
+      expect(byId(h.poller, 'weekly_all')).toMatchObject({ percent: 0, source: 'statusline', stale: false });
+    });
+
+    it('keeps them while the statusline shows the same week', async () => {
+      const h = await start(EPOCH + 5 * 86_400_000);
+      const before = byId(h.poller, 'weekly_scoped:fable')?.percent;
+      await fail(h);
+      h.poller.observe(rateLimits(3, 4));
+      expect(byId(h.poller, 'weekly_scoped:fable')?.percent).toBe(before);
+    });
+
+    it('keeps them when upstream is healthy, because it speaks for them', async () => {
+      const h = await start(EPOCH + 2 * 86_400_000);
+      h.poller.stop();
+      const before = byId(h.poller, 'weekly_scoped:fable')?.percent;
+      h.poller.observe(rateLimits(0, 0));
+      expect(byId(h.poller, 'weekly_scoped:fable')?.percent).toBe(before);
+    });
+  });
+
   it('an upstream row is served as-is until its own window resets', async () => {
     const reset = EPOCH + 60 * 60_000;
     const h = harness({ upstreamBody: () => upstreamResettingAt(reset) });

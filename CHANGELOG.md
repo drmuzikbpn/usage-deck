@@ -4,6 +4,11 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+### Fixed (limits)
+- A new week no longer leaves an old scoped limit on show. If the usage endpoint is failing and
+  the status line shows a different weekly window, rows only the endpoint can update (such as
+  Fable) read as unknown until it answers again (§23.67).
+
 ### Security
 - **Every request needs the bearer token, from this machine too.** The loopback `GET` and
   hook `POST` exemptions are gone; the hook, status line, MCP server and CLI read the token
