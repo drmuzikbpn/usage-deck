@@ -17,6 +17,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.core.content.res.ResourcesCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import com.evenseal.usagedeck.R
 import com.google.zxing.BarcodeFormat
 import com.journeyapps.barcodescanner.BarcodeCallback
@@ -53,6 +55,12 @@ class QrScanActivity : ComponentActivity() {
                 scanner,
                 LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
             )
+        }
+        // Android 15 and up draw this activity edge to edge at the Play flavor's target.
+        ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
+            view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+            WindowInsetsCompat.CONSUMED
         }
         setContentView(root)
 
