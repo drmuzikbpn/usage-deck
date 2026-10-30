@@ -27,13 +27,12 @@ export const PLUGIN_RECORD = 'menubar-plugin';
 const DEFAULTS_BIN = '/usr/bin/defaults';
 
 const SHORT_LABELS: Record<string, string> = { session: '5h', weekly_all: '7d' };
-const COLORS: Record<LimitStatus, string | null> = { ok: null, warn: 'orange', critical: 'red' };
 /**
- * The title keeps the menu bar's own text colour: coloured text is unreadable on a tinted menu
- * bar (red on blue was). Status goes in a leading dot instead, which reads on any background.
- * Dropdown rows keep their colours; the menu itself has a plain background.
+ * No text colours anywhere: the menu bar and the dropdown are both translucent, and coloured
+ * text was unreadable on them (red on a blue menu bar, red on a red wallpaper). Status goes
+ * in a leading dot instead, which reads on any background.
  */
-const DOTS: Record<LimitStatus, string> = { ok: '', warn: '🟠 ', critical: '🔴 ' };
+const DOTS: Record<LimitStatus, string> = { ok: '🟢 ', warn: '🟠 ', critical: '🔴 ' };
 
 export type MenubarState =
   | { running: false }
@@ -88,8 +87,7 @@ export function renderMenubar(state: MenubarState, now: number, plugin: string |
       if (limit === undefined) continue;
       const pct = limit.percent === null ? '?%' : `${limit.percent}%`;
       parts.push(`${SHORT_LABELS[id] ?? id} ${pct}`);
-      const color = COLORS[summary?.status.byId[id] ?? 'ok'];
-      menu.push(`${SHORT_LABELS[id] ?? id}: ${pct}${resets(limit.resetsAt, now)}${color === null ? '' : ` | color=${color}`}`);
+      menu.push(`${DOTS[summary?.status.byId[id] ?? 'ok']}${SHORT_LABELS[id] ?? id}: ${pct}${resets(limit.resetsAt, now)}`);
       if (limit.stale === true) stale = true;
       const at = typeof limit.asOf === 'string' ? Date.parse(limit.asOf) : Number.NaN;
       if (Number.isFinite(at)) newest = Math.max(newest, at);
@@ -101,12 +99,12 @@ export function renderMenubar(state: MenubarState, now: number, plugin: string |
     lines.push(clean(title));
     lines.push('---');
     lines.push(clean(`claude-usage: running (${state.version === '' ? 'version unknown' : state.version})`));
-    if (summary === null) lines.push('Not answering | color=red');
-    lines.push(...menu.map((m) => (m.includes(' | ') ? m : clean(m))));
+    if (summary === null) lines.push('🔴 Not answering');
+    lines.push(...menu.map(clean));
     if (Number.isFinite(newest)) {
-      lines.push(`${stale ? 'Stale: updated' : 'Updated'} ${ago(now - newest)}${stale ? ' | color=orange' : ''}`);
+      lines.push(`${stale ? '⚠︎ Stale: updated' : 'Updated'} ${ago(now - newest)}`);
     } else if (parts.length > 0 && stale) {
-      lines.push('Stale reading | color=orange');
+      lines.push('⚠︎ Stale reading');
     }
     lines.push('---');
     lines.push(action('Stop daemon', plugin, ['service', 'stop']));

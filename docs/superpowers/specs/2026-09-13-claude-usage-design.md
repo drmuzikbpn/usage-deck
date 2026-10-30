@@ -2016,7 +2016,8 @@ change, each fail a named test.
   With arguments, the script passes them straight to the CLI; that is how menu actions run.
 - **What it shows.** The title shows the `session` and `weekly_all` percentages in the menu
   bar's own text colour, never a set colour, because red text was unreadable on a tinted menu
-  bar. A leading 🟠/🔴 dot carries the overall status. Dropdown rows keep `color=`. `⚠︎` means a row is `stale` or the newest `asOf` is over 15 minutes old.
+  bar. A leading 🟢/🟠/🔴 dot carries the overall status. Dropdown rows get the same
+  per-limit dot and no `color=`, because the dropdown is translucent too. `⚠︎` means a row is `stale` or the newest `asOf` is over 15 minutes old.
   A daemon with no live pid in `daemon.json` shows as stopped. One that has a pid but does not
   answer within 2 s shows "Not answering". `menubar` always exits 0 and never prints the token.
 - **Start/Stop.** `claude-usage service start|stop|status` wraps the existing `ServiceManager`

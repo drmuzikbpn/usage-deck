@@ -72,10 +72,10 @@ describe('renderMenubar', () => {
       PLUGIN,
     );
     const lines = text.split('\n');
-    expect(lines[0]).toBe('5h 62% · 7d 84%');
+    expect(lines[0]).toBe('🟢 5h 62% · 7d 84%');
     expect(lines[1]).toBe('---');
     expect(text).toContain('claude-usage: running (0.1.160)');
-    expect(text).toContain('5h: 62% · resets in 1h 30m');
+    expect(text).toContain('🟢 5h: 62% · resets in 1h 30m');
     expect(text).toContain('Updated 2m ago');
     expect(text).toContain(`Stop daemon | bash="${PLUGIN}" param1=service param2=stop terminal=false refresh=true`);
     expect(text).not.toContain('Start daemon');
@@ -86,19 +86,21 @@ describe('renderMenubar', () => {
     expect(text.split('\n')[0]).toBe('🔴 5h 97%');
     const warn = renderMenubar({ running: true, version: '1', summary: summary([limit('session', 85)], 'warn') }, NOW, PLUGIN);
     expect(warn.split('\n')[0]).toBe('🟠 5h 85%');
-    expect(text).toContain('5h: 97% | color=red');
+    expect(text).toContain('🔴 5h: 97%');
+    expect(text).not.toContain('color=red');
+    expect(text).not.toContain('color=orange');
   });
 
   it('flags a reading older than 15 minutes as stale', () => {
     const old = new Date(NOW - 42 * 60000).toISOString();
     const text = renderMenubar({ running: true, version: '1', summary: summary([limit('session', 10, { asOf: old })]) }, NOW, PLUGIN);
-    expect(text.split('\n')[0]).toBe('5h 10% ⚠︎');
-    expect(text).toContain('Stale: updated 42m ago | color=orange');
+    expect(text.split('\n')[0]).toBe('🟢 5h 10% ⚠︎');
+    expect(text).toContain('⚠︎ Stale: updated 42m ago');
   });
 
   it('flags a row the daemon marked stale', () => {
     const text = renderMenubar({ running: true, version: '1', summary: summary([limit('weekly_all', null, { stale: true })]) }, NOW, PLUGIN);
-    expect(text.split('\n')[0]).toBe('7d ?% ⚠︎');
+    expect(text.split('\n')[0]).toBe('🟢 7d ?% ⚠︎');
   });
 
   it('shows a stopped daemon in red with Start', () => {
@@ -111,7 +113,7 @@ describe('renderMenubar', () => {
   it('says so when the daemon runs but does not answer', () => {
     const text = renderMenubar({ running: true, version: '1', summary: null }, NOW, PLUGIN);
     expect(text.split('\n')[0]).toBe('Claude …');
-    expect(text).toContain('Not answering | color=red');
+    expect(text).toContain('🔴 Not answering');
   });
 
   it('greys out the actions without a plugin path', () => {
@@ -127,7 +129,7 @@ describe('claude-usage menubar', () => {
     const c = capture();
     const code = await run(['menubar', '--plugin', PLUGIN], { ...c.io, configDir: d.configDir });
     expect(code).toBe(0);
-    expect(c.out()).toMatch(/^5h 42%/);
+    expect(c.out()).toMatch(/^🟢 5h 42%/);
     expect(c.out()).toContain('param2=stop');
   });
 
