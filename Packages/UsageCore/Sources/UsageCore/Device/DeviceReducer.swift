@@ -204,7 +204,7 @@ public struct DeviceReducer: Sendable {
     /// The last summary's map must not be reused: it describes the old percents, so a week that
     /// reset from 99% to 0% stayed red until the next snapshot.
     private func limitsOf(_ limits: [LimitDTO]) -> [Limit] {
-        limits.map { $0.toModel(status: LimitStatusMapping.status(for: $0, thresholds: thresholds)) }
+        limits.withoutUnknownScoped.map { $0.toModel(status: LimitStatusMapping.status(for: $0, thresholds: thresholds)) }
     }
 
     static func weakETag(_ rev: Int64) -> String {

@@ -135,6 +135,14 @@ struct DeviceReducerTests {
         #expect(r.state.limits.map(\.status) == [.ok, .warn])
     }
 
+    @Test func aScopedLimitWithNoNumberIsLeftOutRatherThanShownAsZero() throws {
+        var r = DeviceReducer(record: rec, burn: burn)
+        let json = #"{"id":"weekly_scoped:fable","kind":"weekly_scoped","percent":null,"severity":null}"#
+        let unknown = try JSONDecoder().decode(LimitDTO.self, from: Data(json.utf8))
+        r.apply(.limits([LimitDTO(id: "weekly_all", kind: "weekly_all", percent: 3), unknown], fetchedAt: nil, stale: false), now: t0)
+        #expect(r.state.limits.map(\.id) == ["weekly_all"])
+    }
+
     @Test func anUnauthorizedFailureMarksTheDeviceForRepairUntilItAnswersAgain() {
         var r = DeviceReducer(record: rec, burn: burn)
         r.fail(DaemonError(code: "unauthorized", httpStatus: 401))
