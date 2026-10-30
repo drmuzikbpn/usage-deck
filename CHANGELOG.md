@@ -4,6 +4,10 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+### Added (menu bar)
+- `menubar --install` offers to start SwiftBar or xbar at login, so the menu bar item comes back
+  after a restart. `--login-item` and `--no-login-item` answer without asking (§23.66).
+
 ### Fixed (limits)
 - A new week no longer leaves an old scoped limit on show. If the usage endpoint is failing and
   the status line shows a different weekly window, rows only the endpoint can update (such as

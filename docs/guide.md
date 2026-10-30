@@ -254,6 +254,11 @@ brew install swiftbar          # open it once and pick a plugin folder
 claude-usage menubar --install # or: --install --dir <folder>
 ```
 
+`--install` also offers to start SwiftBar at login, because the daemon comes back after a restart
+on its own but SwiftBar does not. `--login-item` says yes without asking and `--no-login-item`
+says no. It's your login item once added: `--uninstall` leaves it, and System Settings > General >
+Login Items removes it.
+
 The menu bar shows `5h 42% · 7d 61%` in the menu bar's own text colour, with a 🟢, 🟠 or 🔴
 dot in front for fine, warn and critical, and `⚠︎` when the newest reading is over 15 minutes old; ⚪ and `—` mean there is no number yet. When
 the daemon is down it shows `🔴 Claude ⏹`.
