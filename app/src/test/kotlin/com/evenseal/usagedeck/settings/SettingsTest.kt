@@ -6,6 +6,7 @@ package com.evenseal.usagedeck.settings
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.test.core.app.ApplicationProvider
+import com.evenseal.usagedeck.BuildConfig
 import com.evenseal.usagedeck.core.model.Health
 import com.evenseal.usagedeck.core.model.UserView
 import java.time.LocalTime
@@ -131,10 +132,11 @@ class SettingsTest {
     }
 
     @Test
-    fun `display and sound toggles default on and round-trip off`() {
+    fun `display defaults follow the build, sound defaults on, and all round-trip off`() {
         val store = SettingsStore(prefs)
         val d = store.settings.value
-        assertTrue(d.autoDim && d.keepScreenOn && d.clock24h && d.sound)
+        assertEquals(BuildConfig.KIOSK, d.autoDim && d.keepScreenOn)
+        assertTrue(d.clock24h && d.sound)
         store.update { it.copy(autoDim = false, keepScreenOn = false, clock24h = false, sound = false) }
         val again = SettingsStore(prefs).settings.value
         assertFalse(again.autoDim)

@@ -6,8 +6,8 @@
   Gradle dependency verification: every artifact the build resolves must match a sha256 here.
   Regenerate after changing a dependency, with the full task set CI runs, e.g.
     ./gradlew (write-verification-metadata sha256) ktlintCheck :core:test :fakedaemon:test \
-      :fakedaemon:installDist :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease \
-      :app:connectedDebugAndroidTest
+      :fakedaemon:installDist :app:testDeckDebugUnitTest :app:testPlayDebugUnitTest :app:assembleDeckDebug \
+      :app:assembleDeckRelease :app:bundlePlayRelease :app:connectedDeckDebugAndroidTest
   then re-add the aapt2 "-linux" artifact (CI runs on Linux; a Mac only resolves "-osx").
 -->
 <verification-metadata xmlns="https://schema.gradle.org/dependency-verification" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="https://schema.gradle.org/dependency-verification https://schema.gradle.org/dependency-verification/dependency-verification-1.3.xsd">

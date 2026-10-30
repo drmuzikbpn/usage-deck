@@ -26,6 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.evenseal.usagedeck.BuildConfig
 import com.evenseal.usagedeck.core.model.Health
 import com.evenseal.usagedeck.core.model.MachineState
 import com.evenseal.usagedeck.ui.theme.DeckColors
@@ -50,7 +51,9 @@ fun StatusBar(
     modifier: Modifier = Modifier,
     zone: ZoneId = ZoneId.systemDefault(),
     use24h: Boolean = true,
-    onSettings: (() -> Unit)? = null
+    onSettings: (() -> Unit)? = null,
+    /** Only the kiosk manages its own wifi; a phone already shows that in its own status bar. */
+    showWifi: Boolean = BuildConfig.KIOSK
 ) {
     Row(
         modifier = modifier
@@ -61,12 +64,14 @@ fun StatusBar(
         horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         // Bars only: the network's name is on the Wifi screen a tap away and only crowds the bar.
-        Chip(
-            text = if (wifi.connected) bars(wifi.bars) else "no wifi",
-            dot = if (wifi.connected) DeckColors.ok else DeckColors.crit,
-            onClick = onWifi,
-            modifier = Modifier.semantics { contentDescription = "$WIFI_CHIP ${wifi.ssid ?: "off"}" }
-        )
+        if (showWifi) {
+            Chip(
+                text = if (wifi.connected) bars(wifi.bars) else "no wifi",
+                dot = if (wifi.connected) DeckColors.ok else DeckColors.crit,
+                onClick = onWifi,
+                modifier = Modifier.semantics { contentDescription = "$WIFI_CHIP ${wifi.ssid ?: "off"}" }
+            )
+        }
         // The wide dock has no bottom bar, so its gear lives up here beside the wifi chip.
         if (onSettings != null) {
             Chip(

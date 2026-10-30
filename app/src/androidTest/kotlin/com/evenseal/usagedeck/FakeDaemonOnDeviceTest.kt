@@ -23,6 +23,7 @@ import okhttp3.Request
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -87,6 +88,8 @@ class FakeDaemonOnDeviceTest {
     /** The plain listener is loopback only and still wants the bearer for anything but liveness. */
     @Test
     fun anUnauthenticatedLoopbackReadIsRefusedButLivenessAnswers() {
+        assumeTrue(BuildConfig.KIOSK) // The Play build refuses cleartext outright, even on loopback.
+
         fun status(path: String) =
             client.newCall(Request.Builder().url("http://127.0.0.1:$PORT$path").get().build()).execute().use { it.code }
         assertEquals(200, status("/health"))

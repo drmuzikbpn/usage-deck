@@ -32,15 +32,32 @@ android {
     defaultConfig {
         applicationId = "com.evenseal.usagedeck"
         minSdk = 29
-        targetSdk = 29
         versionCode = commitCount
-        versionName = "0.1.$commitCount+$shortSha"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        buildConfigField(
-            "String",
-            "RELEASE_REPO",
-            "\"${System.getenv("RELEASE_REPO") ?: "drmuzikbpn/usage-deck"}\""
-        )
+    }
+    // `deck` is the Device Owner kiosk on a Nexus 5X; `play` is the everyday phone app on Google Play.
+    // They differ in application id on purpose: the kiosk must keep its id to keep Device Owner, and
+    // sharing it would let a Play update collide with that install.
+    flavorDimensions += "channel"
+    productFlavors {
+        create("deck") {
+            dimension = "channel"
+            targetSdk = 29
+            versionName = "0.1.$commitCount+$shortSha"
+            buildConfigField("boolean", "KIOSK", "true")
+            buildConfigField(
+                "String",
+                "RELEASE_REPO",
+                "\"${System.getenv("RELEASE_REPO") ?: "drmuzikbpn/usage-deck"}\""
+            )
+        }
+        create("play") {
+            dimension = "channel"
+            applicationId = "com.evenseal.usagedeck.phone"
+            targetSdk = 36
+            versionName = "1.0.$commitCount"
+            buildConfigField("boolean", "KIOSK", "false")
+        }
     }
     // Release APKs leave Gradle unsigned: CI signs them with apksigner and app/signing/usage-deck.lineage
     // (a rotation from this Mac's debug key), so the phone provisioned with a debug build updates in place.
@@ -48,7 +65,7 @@ android {
         release { isMinifyEnabled = false }
     }
     lint {
-        // Not a Play Store app: the kiosk targets API 29 on purpose (Nexus 5X, LineageOS 17.1).
+        // Only the `deck` flavor: the kiosk targets API 29 on purpose (Nexus 5X, LineageOS 17.1).
         disable += "ExpiredTargetSdkVersion"
     }
     buildFeatures {

@@ -20,8 +20,8 @@ talks to lives on `main` of the same repository and has its own contributing not
 ```bash
 export JAVA_HOME=/opt/homebrew/opt/openjdk@17          # any JDK 17 works
 export ANDROID_HOME=/opt/homebrew/share/android-commandlinetools
-./gradlew :core:test :fakedaemon:test :app:testDebugUnitTest
-scripts/emulator.sh && ANDROID_SERIAL=emulator-5554 ./gradlew :app:connectedDebugAndroidTest
+./gradlew :core:test :fakedaemon:test :app:testDeckDebugUnitTest :app:testPlayDebugUnitTest
+scripts/emulator.sh && ANDROID_SERIAL=emulator-5554 ./gradlew :app:connectedDeckDebugAndroidTest
 ```
 
 `scripts/fakedaemon.sh warnCrossing` gives the emulator something to show without a real daemon.

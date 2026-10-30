@@ -46,6 +46,7 @@ class SettingsScreenTest {
             latest = { state }
             DeckTheme {
                 SettingsScreen(
+                    kiosk = true,
                     settings = state,
                     version = "0.1.417+abc1234",
                     updateState = "up to date",
@@ -128,7 +129,7 @@ class SettingsScreenTest {
 
     @Test
     fun displayAndSoundTogglesWriteTheirSettings() {
-        show()
+        show(Settings(autoDim = true, keepScreenOn = true))
         compose.onNodeWithText("Wifi").assertExists()
         compose.onNodeWithText("24-hour clock").performClick()
         assertEquals(false, latest().clock24h)

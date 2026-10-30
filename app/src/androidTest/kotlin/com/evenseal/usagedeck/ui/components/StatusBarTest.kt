@@ -35,6 +35,7 @@ class StatusBarTest {
         compose.setContent {
             DeckTheme {
                 StatusBar(
+                    showWifi = true,
                     wifi = WifiStatus(connected = true, ssid = "deck", rssi = -50, ip = "10.0.0.2", bars = 3),
                     machines = machines,
                     clock = Fx.NOW,

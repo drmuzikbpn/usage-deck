@@ -75,6 +75,7 @@ fun EmptyState(
     body: String,
     modifier: Modifier = Modifier,
     action: Pair<String, () -> Unit>? = null,
+    secondary: Pair<String, () -> Unit>? = null,
     detail: @Composable (() -> Unit)? = null
 ) {
     Column(
@@ -115,6 +116,18 @@ fun EmptyState(
                     .background(DeckColors.surface, RoundedCornerShape(10.dp))
                     .clickable(onClick = onClick)
                     .padding(horizontal = 22.dp, vertical = 12.dp)
+            )
+        }
+        secondary?.let { (label, onClick) ->
+            Text(
+                text = label,
+                color = DeckColors.accent,
+                fontFamily = DeckType.text,
+                fontSize = 13.sp,
+                modifier = Modifier
+                    .padding(top = 12.dp)
+                    .clickable(onClick = onClick)
+                    .padding(horizontal = 16.dp, vertical = 10.dp)
             )
         }
     }
@@ -175,7 +188,13 @@ fun MachineWaitRow(machine: MachineState, now: Instant, modifier: Modifier = Mod
 
 /** The shared empty-state body for both home screens. Returns nothing when there is data to show. */
 @Composable
-fun HomeEmptyBody(empty: HomeEmpty, now: Instant, onPair: () -> Unit, modifier: Modifier = Modifier) {
+fun HomeEmptyBody(
+    empty: HomeEmpty,
+    now: Instant,
+    onPair: () -> Unit,
+    modifier: Modifier = Modifier,
+    onDemo: (() -> Unit)? = null
+) {
     when (empty) {
         HomeEmpty.NoMachines ->
             EmptyState(
@@ -184,6 +203,7 @@ fun HomeEmptyBody(empty: HomeEmpty, now: Instant, onPair: () -> Unit, modifier: 
                 "On a Mac running the claude-usage daemon, run\n" +
                     "claude-usage pair\nand scan the QR code it prints.",
                 action = "Pair a machine" to onPair,
+                secondary = onDemo?.let { "Try the demo" to it },
                 modifier = modifier
             )
         is HomeEmpty.Connecting ->

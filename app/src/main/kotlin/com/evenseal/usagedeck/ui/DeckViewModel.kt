@@ -322,10 +322,12 @@ private class ControllerPauseActions(private val graph: DeckGraph) : PauseAction
     override val lastOutcomes: StateFlow<List<PauseOutcome>> get() = graph.pause.lastOutcomes
 
     override fun tap(target: PauseTarget) {
+        if (graph.demo.tap(target)) return
         graph.scope.launch { graph.pause.tap(target) }
     }
 
     override fun hold(target: PauseTarget) {
+        if (graph.demo.hold(target)) return
         graph.scope.launch { graph.pause.hold(target) }
     }
 

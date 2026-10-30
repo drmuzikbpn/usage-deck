@@ -34,19 +34,6 @@ data class WifiNetwork(
     enum class Security { OPEN, WPA, WPA3, EAP_UNSUPPORTED }
 }
 
-/** The status chip's view of the radio. [bars] is 0..4. */
-data class WifiStatus(
-    val connected: Boolean,
-    val ssid: String?,
-    val rssi: Int?,
-    val ip: String?,
-    val bars: Int
-) {
-    companion object {
-        val DISCONNECTED = WifiStatus(connected = false, ssid = null, rssi = null, ip = null, bars = 0)
-    }
-}
-
 /**
  * Device Owner on Android 10 gets unrestricted `WifiManager`, so the deck manages wifi itself
  * rather than dropping the user into Settings (which lock task hides anyway). Spec §6.1.
@@ -58,12 +45,12 @@ class WifiRepository(
     private val context: Context,
     private val scope: CoroutineScope,
     private val clock: Clock = SystemClock
-) {
+) : WifiMonitor {
     private val wifi: WifiManager =
         context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
 
     private val _status = MutableStateFlow(WifiStatus.DISCONNECTED)
-    val status: StateFlow<WifiStatus> = _status.asStateFlow()
+    override val status: StateFlow<WifiStatus> = _status.asStateFlow()
 
     private val _scanResults = MutableStateFlow<List<WifiNetwork>>(emptyList())
     val scanResults: StateFlow<List<WifiNetwork>> = _scanResults.asStateFlow()
@@ -75,7 +62,7 @@ class WifiRepository(
     private var pollJob: Job? = null
     private var lastScanRequestedAt: Instant? = null
 
-    fun start() {
+    override fun start() {
         if (receiver != null) return
         val r = object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
@@ -111,7 +98,7 @@ class WifiRepository(
         }
     }
 
-    fun stop() {
+    override fun stop() {
         pollJob?.cancel()
         pollJob = null
         val r = receiver ?: return

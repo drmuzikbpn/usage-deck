@@ -158,7 +158,8 @@ class PinFlowTest {
         onSetPin = onSetPin,
         onRemovePin = onRemovePin,
         onCheckUpdate = {},
-        onBack = {}
+        onBack = {},
+        kiosk = true
     )
 
     @Test

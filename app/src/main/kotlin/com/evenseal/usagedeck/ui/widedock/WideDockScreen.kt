@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.evenseal.usagedeck.BuildConfig
 import com.evenseal.usagedeck.core.model.Health
 import com.evenseal.usagedeck.core.model.Limit
 import com.evenseal.usagedeck.core.model.TeamState
@@ -121,6 +122,11 @@ fun WideDockScreen(vm: DeckViewModel, onOpen: (Route) -> Unit) {
                         empty = empty,
                         now = now,
                         onPair = { onOpen(Route.Pairing) },
+                        onDemo = if (BuildConfig.KIOSK) {
+                            null
+                        } else {
+                            { onOpen(Route.Demo) }
+                        },
                         modifier = Modifier.weight(1f)
                     )
                 } else {

@@ -1,7 +1,29 @@
 # Usage Deck — working notes
 
-Nexus 5X Device Owner kiosk that streams Claude Code utilisation from N `claude-usage` daemons
-over Tailscale and pauses/resumes sessions. The repository is public: see **Public repository**.
+Streams Claude Code utilisation from N `claude-usage` daemons over the LAN or Tailscale and
+pauses/resumes sessions. Two flavors of one app: `deck`, the Nexus 5X Device Owner kiosk, and
+`play`, the everyday phone app for Google Play. The repository is public: see **Public repository**.
+
+## Flavors
+
+| | `deck` | `play` |
+| --- | --- | --- |
+| Application id | `com.evenseal.usagedeck` (never change: Device Owner) | `com.evenseal.usagedeck.phone` |
+| `targetSdk` | 29, on purpose | 36. Targeting 37 will need `ACCESS_LOCAL_NETWORK` |
+| Runs the engine | Always, from `DeckService` | While on screen; `DeckService` only with "Keep watching in the background" |
+| Wifi, self-update, lock task, HOME | Yes | No. Cleartext is off too |
+
+- Kiosk-only code lives in `app/src/deck`; `service/Channel.kt` in each flavor is the seam
+  (`graph.channel`, `channelRoutes`). `kiosk/` stays in main because it is inert without Device Owner.
+  `BuildConfig.KIOSK` gates the rest.
+- `DeckEngine` owns clients, pause and alerts, and runs while a `Hold` (UI or SERVICE) is taken.
+  With no hold nothing runs, so a phone's soft-pause escalation waits for the next open.
+- `play` alerts: overlay while on screen, notification otherwise. `DeckMode.DOCK` means nothing there.
+- The demo (`demo/DemoDeck.kt`) is only offered on `play`. `graph.team` shows it; pauses and alerts
+  read `graph.alertSource`, never the demo.
+- Upload only CI's `play-bundle` artifact to Play, never a local build: `versionCode` is the commit
+  count of `usage-android` and must only rise.
+- `robolectric.properties` pins `play` unit tests to API 34: API 35+ needs Java 21.
 
 ## Environment
 
@@ -25,14 +47,16 @@ export ANDROID_HOME=/opt/homebrew/share/android-commandlinetools
 ## Commands
 
 ```bash
-./gradlew :core:test :fakedaemon:test :app:testDebugUnitTest   # JVM + Robolectric
-./gradlew :app:assembleDebug
+./gradlew :core:test :fakedaemon:test :app:testDeckDebugUnitTest :app:testPlayDebugUnitTest   # JVM + Robolectric
+./gradlew :app:assembleDeckDebug :app:assemblePlayDebug
 ./gradlew ktlintFormat                                          # run before every commit
 
 scripts/emulator.sh                                             # start/create the deck29 AVD
-ANDROID_SERIAL=emulator-5554 ./gradlew :app:connectedDebugAndroidTest
+ANDROID_SERIAL=emulator-5554 ./gradlew :app:connectedDeckDebugAndroidTest
+ANDROID_SERIAL=emulator-5554 ./gradlew :app:connectedPlayDebugAndroidTest  # API 36 AVD; not run in CI
 scripts/fakedaemon.sh warnCrossing                              # idle | warnCrossing | freeze | machineDrop | tokenRotated
-scripts/pair-emulator.sh                                        # pairs the emulator's debug build with it
+scripts/pair-emulator.sh                                        # pairs the emulator's deck debug build
+PACKAGE=com.evenseal.usagedeck.phone scripts/pair-emulator.sh   # the same for the play debug build
 scripts/public-check.sh --self-test
 ```
 
@@ -42,7 +66,7 @@ network), prints a single-use `usagedeck://pair?...` link and a token generated 
 `scripts/pair-emulator.sh` pushes the link to
 `/sdcard/Android/data/com.evenseal.usagedeck/files/pairing-import.json`, which only a **debug**
 build reads. It refuses a non-emulator serial. Never pair the emulator with a real daemon and never
-print a real pairing link. `connectedDebugAndroidTest` wipes the pairing, so pair again afterwards.
+print a real pairing link. `connectedDeckDebugAndroidTest` wipes the pairing, so pair again afterwards.
 Landscape is `adb -s emulator-5554 emu rotate`. Show UI changes there and wait for the owner's OK
 before pushing a release. `scripts/emulator.sh` needs the SDK packages `emulator` and
 `system-images;android-29;default;arm64-v8a` (`sdkmanager` installs them).
@@ -63,7 +87,7 @@ and `:core:test` on pre-commit. Install with `lefthook install` if the hook is m
 
 ## Global Constraints
 
-- Package `com.evenseal.usagedeck`. App name "Usage Deck". `minSdk 29`, `targetSdk 29`, `compileSdk 34`.
+- Package `com.evenseal.usagedeck`. App name "Usage Deck". `minSdk 29`, `compileSdk 37`; `targetSdk` per flavor (see **Flavors**).
 - Environment: `export JAVA_HOME=/opt/homebrew/opt/openjdk@17 ANDROID_HOME=/opt/homebrew/share/android-commandlinetools` before any `./gradlew`. `local.properties` holds `sdk.dir=/opt/homebrew/share/android-commandlinetools` and is gitignored.
 - Build only on `limits[]` (daemon §23); never read `legacyWindows`. Headline ids: `"session"` (5 h) and `"weekly_all"` (7 d). `resetsAt` may be null → render "resets: unknown".
 - `/v1/tokens` is the spend endpoint (not `/v1/spend`). `groupBy=project` returns `{ key, label, …counts }`, `label` = cwd.
@@ -237,6 +261,7 @@ owner", never a person's name; never write a serial number, a real host name or 
 
 ## Docs
 
+`docs/play-store.md` (listing and Play Console answers), `PRIVACY.md` (the Play build's policy),
 `docs/device-setup.md` (flashing and provisioning), `docs/teammate-onboarding.md` (adding a Mac),
 `docs/smoke-test.md` (manual checklist before a release), `SECURITY.md` (what is and is not
 protected), `THIRD_PARTY_NOTICES.md` + `licenses/` (fonts and libraries).

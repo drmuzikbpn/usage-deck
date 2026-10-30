@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  SPDX-License-Identifier: MIT
+  Copyright (c) 2026 Even Seal Productions
+-->
+<!-- The App Store icon's two rings, drawn inside the adaptive icon's 66 dp safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:pathData="M54,25.2a28.8,28.8 0 1,1 0,57.6a28.8,28.8 0 1,1 0,-57.6"
+        android:strokeWidth="8.4"
+        android:strokeColor="#343C4A" />
+    <path
+        android:pathData="M54,37.4a16.6,16.6 0 1,1 0,33.2a16.6,16.6 0 1,1 0,-33.2"
+        android:strokeWidth="6.3"
+        android:strokeColor="#343C4A" />
+    <path
+        android:pathData="M54,25.2A28.8,28.8 0 1,1 25.71,59.4"
+        android:strokeWidth="8.4"
+        android:strokeColor="#48C9A0"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M54,37.4A16.6,16.6 0 0,1 59.1,69.8"
+        android:strokeWidth="6.3"
+        android:strokeColor="#F4C238"
+        android:strokeLineCap="round" />
+</vector>

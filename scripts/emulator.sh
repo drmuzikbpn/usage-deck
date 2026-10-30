@@ -38,4 +38,4 @@ if ! "$ADB" devices | grep -q "^$SERIAL"; then
 fi
 
 echo "emulator $AVD ready as $SERIAL"
-echo "run tests with: ANDROID_SERIAL=$SERIAL ./gradlew :app:connectedDebugAndroidTest"
+echo "run tests with: ANDROID_SERIAL=$SERIAL ./gradlew :app:connectedDeckDebugAndroidTest"

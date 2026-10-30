@@ -7,9 +7,11 @@ import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
+import com.evenseal.usagedeck.BuildConfig
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -75,6 +77,7 @@ class KioskManagerTest {
 
     @Test
     fun `applyPolicies grants location and camera so the wifi scan is not empty`() {
+        assumeTrue(BuildConfig.KIOSK) // Only the kiosk declares the location permission.
         becomeDeviceOwner()
         kiosk.applyPolicies()
 

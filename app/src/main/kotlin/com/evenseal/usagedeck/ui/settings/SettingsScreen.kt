@@ -38,6 +38,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.evenseal.usagedeck.BuildConfig
 import com.evenseal.usagedeck.core.model.UserView
 import com.evenseal.usagedeck.settings.CRITICAL_MAX
 import com.evenseal.usagedeck.settings.ESCALATION_CHOICES
@@ -66,7 +67,9 @@ fun SettingsScreen(
     /** Opens pairing: with a machine already paired, home offers Projects instead of Pair. */
     onPair: () -> Unit = {},
     /** The people on the board, for the Users section; renames go through [onUpdate]. */
-    users: List<UserView> = emptyList()
+    users: List<UserView> = emptyList(),
+    /** Wifi, the exit PIN and self-update belong to the kiosk; a phone has its own. */
+    kiosk: Boolean = BuildConfig.KIOSK
 ) {
     var renaming by remember { mutableStateOf<UserView?>(null) }
     renaming?.let { user ->
@@ -107,22 +110,24 @@ fun SettingsScreen(
         }
 
         Section("Network")
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(onClick = onWifi)
-                .padding(horizontal = 10.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "Wifi",
-                color = DeckColors.fg,
-                fontFamily = DeckType.text,
-                fontSize = 14.sp,
-                modifier = Modifier.weight(1f)
-            )
-            Text(text = wifiLabel, color = DeckColors.muted, fontFamily = DeckType.mono, fontSize = 12.sp)
-            Text(text = "  ›", color = DeckColors.accent, fontFamily = DeckType.text, fontSize = 18.sp)
+        if (kiosk) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onWifi)
+                    .padding(horizontal = 10.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Wifi",
+                    color = DeckColors.fg,
+                    fontFamily = DeckType.text,
+                    fontSize = 14.sp,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(text = wifiLabel, color = DeckColors.muted, fontFamily = DeckType.mono, fontSize = 12.sp)
+                Text(text = "  ›", color = DeckColors.accent, fontFamily = DeckType.text, fontSize = 18.sp)
+            }
         }
         Row(
             modifier = Modifier
@@ -152,7 +157,11 @@ fun SettingsScreen(
         Section("Display")
         ToggleRow(
             label = "Keep screen on",
-            description = "Hold the screen on even when unplugged. On power it never dims.",
+            description = if (kiosk) {
+                "Hold the screen on even when unplugged. On power it never dims."
+            } else {
+                "Hold the screen on while the app is open."
+            },
             checked = settings.keepScreenOn,
             onChange = { on -> onUpdate { it.copy(keepScreenOn = on) } }
         )
@@ -170,6 +179,15 @@ fun SettingsScreen(
         )
 
         Section("Alerts")
+        if (!kiosk) {
+            ToggleRow(
+                label = "Keep watching in the background",
+                description = "Alerts and pause escalation keep running with the app closed, " +
+                    "and a notification stays up. Off, they run only while the app is open.",
+                checked = settings.keepWatching,
+                onChange = { on -> onUpdate { it.copy(keepWatching = on) } }
+            )
+        }
         ToggleRow(
             label = "Alert sound",
             description = "A soft chime when an alert shows. Quiet hours still silence it.",
@@ -231,19 +249,21 @@ fun SettingsScreen(
             onChange = { percent -> onUpdate { it.copy(nightDim = percent / PERCENT.toFloat()) } }
         )
 
-        Section("Kiosk exit PIN")
-        PinField(isSet = settings.pinSet, onSetPin = onSetPin, onRemovePin = onRemovePin)
+        if (kiosk) {
+            Section("Kiosk exit PIN")
+            PinField(isSet = settings.pinSet, onSetPin = onSetPin, onRemovePin = onRemovePin)
 
-        Section("Updates")
-        Text(
-            modifier = Modifier.padding(horizontal = 10.dp),
-            text = updateState,
-            color = DeckColors.muted,
-            fontFamily = DeckType.text,
-            fontSize = 13.sp
-        )
-        TextButton(onClick = onCheckUpdate, modifier = Modifier.padding(horizontal = 6.dp)) {
-            Text("Check for update now", color = DeckColors.accent, fontFamily = DeckType.text)
+            Section("Updates")
+            Text(
+                modifier = Modifier.padding(horizontal = 10.dp),
+                text = updateState,
+                color = DeckColors.muted,
+                fontFamily = DeckType.text,
+                fontSize = 13.sp
+            )
+            TextButton(onClick = onCheckUpdate, modifier = Modifier.padding(horizontal = 6.dp)) {
+                Text("Check for update now", color = DeckColors.accent, fontFamily = DeckType.text)
+            }
         }
         Text(
             modifier = Modifier.padding(10.dp),

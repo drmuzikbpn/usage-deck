@@ -3,8 +3,6 @@
 
 package com.evenseal.usagedeck.ui
 
-import android.content.Context
-import android.content.Intent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
@@ -21,9 +19,6 @@ import com.evenseal.usagedeck.ui.pairing.PairingScreen
 import com.evenseal.usagedeck.ui.pairing.PairingStatus
 import com.evenseal.usagedeck.ui.pairing.ReplaceTarget
 import com.evenseal.usagedeck.ui.settings.SettingsScreen
-import com.evenseal.usagedeck.ui.wifi.WifiScreen
-import com.evenseal.usagedeck.wifi.CaptivePortalActivity
-import java.time.Duration
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
@@ -33,28 +28,6 @@ import kotlinx.coroutines.withContext
  * The bindings between the stateless screens and the graph. Keeping them here means every screen
  * stays a pure function of its arguments, which is what makes them testable without a daemon.
  */
-@Composable
-internal fun WifiRoute(graph: DeckGraph, vm: DeckViewModel, onBack: () -> Unit) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val status by graph.wifi.status.collectAsStateWithLifecycle()
-    val networks by graph.wifi.scanResults.collectAsStateWithLifecycle()
-    val lastScanAt by graph.wifi.lastScanAt.collectAsStateWithLifecycle()
-    val now by vm.now.collectAsStateWithLifecycle()
-
-    WifiScreen(
-        status = status,
-        networks = networks,
-        lastScanAt = lastScanAt,
-        now = now,
-        canRescan = lastScanAt == null || Duration.between(lastScanAt, now) >= RESCAN_INTERVAL,
-        onRescan = { graph.wifi.requestScan() },
-        onConnect = { ssid, passphrase -> graph.wifi.connect(ssid, passphrase) },
-        onForget = { ssid -> graph.wifi.forget(ssid) },
-        onCaptivePortal = { context.openCaptivePortal() },
-        onBack = onBack
-    )
-}
-
 @Composable
 internal fun SettingsRoute(graph: DeckGraph, onBack: () -> Unit, onWifi: () -> Unit = {}, onPair: () -> Unit = {}) {
     val settings by graph.settings.settings.collectAsStateWithLifecycle()
@@ -170,13 +143,4 @@ internal fun removePin(graph: DeckGraph, current: String): String? = when (val v
     is ExitPin.Result.LockedOut -> "Locked out for ${Format.countdown(verdict.until, graph.clock.now())}"
 }
 
-private fun Context.openCaptivePortal() {
-    runCatching {
-        startActivity(
-            Intent(this, CaptivePortalActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        )
-    }
-}
-
-private val RESCAN_INTERVAL: Duration = Duration.ofSeconds(30)
 private const val NO_UPDATER = "the background service is not running"

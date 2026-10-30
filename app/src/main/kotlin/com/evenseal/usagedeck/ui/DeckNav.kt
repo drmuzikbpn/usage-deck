@@ -16,6 +16,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.evenseal.usagedeck.service.DeckGraph
+import com.evenseal.usagedeck.service.channelRoutes
 import com.evenseal.usagedeck.ui.ledger.LedgerScreen
 import com.evenseal.usagedeck.ui.project.ProjectScreen
 import com.evenseal.usagedeck.ui.projects.ProjectsScreen
@@ -40,6 +41,9 @@ sealed interface Route {
 
     /** Pairing started from a machine's Re-pair card: the result replaces machine [id]'s row. */
     data class Repair(val id: String) : Route
+
+    /** "Try the demo": not a screen, it fills Home with made-up machines. */
+    object Demo : Route
 }
 
 internal object Dest {
@@ -51,6 +55,7 @@ internal object Dest {
     const val PROJECT = "project/{machineId}/{key}"
     const val MACHINE = "machine/{id}"
     const val REPAIR = "repair/{id}"
+    const val DEMO = "demo"
 
     fun path(route: Route): String = when (route) {
         Route.Home -> HOME
@@ -58,6 +63,7 @@ internal object Dest {
         Route.Wifi -> WIFI
         Route.Settings -> SETTINGS
         Route.Pairing -> PAIRING
+        Route.Demo -> DEMO
         is Route.Project -> "project/${route.machineId.encode()}/${route.key.encode()}"
         is Route.Machine -> "machine/${route.id.encode()}"
         is Route.Repair -> "repair/${route.id.encode()}"
@@ -80,7 +86,10 @@ fun DeckNav(graph: DeckGraph, navController: NavHostController = rememberNavCont
     // a destination this build does not register is ignored rather than thrown.
     val open: (Route) -> Unit = { route ->
         val path = Dest.path(route)
-        if (navController.graph.findNode(path) != null) navController.navigate(path)
+        when {
+            route == Route.Demo -> graph.demo.start()
+            navController.graph.findNode(path) != null -> navController.navigate(path)
+        }
     }
     val back: () -> Unit = { navController.popBackStack() }
 
@@ -94,7 +103,7 @@ fun DeckNav(graph: DeckGraph, navController: NavHostController = rememberNavCont
                 if (landscape) WideDockScreen(vm, open) else LedgerScreen(vm, open)
             }
             composable(Dest.PROJECTS) { ProjectsScreen(vm, open, back) }
-            composable(Dest.WIFI) { WifiRoute(graph, vm, back) }
+            channelRoutes(graph, vm, back)
             composable(Dest.SETTINGS) {
                 SettingsRoute(graph, back, onWifi = { open(Route.Wifi) }, onPair = { open(Route.Pairing) })
             }

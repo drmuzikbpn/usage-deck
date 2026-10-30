@@ -2,6 +2,13 @@
 
 Not affiliated with Anthropic.
 
+Two builds come from this branch:
+
+- **`play`** — the everyday phone app for Google Play (`com.evenseal.usagedeck.phone`). It streams
+  while it is open, and "Keep watching in the background" in Settings keeps alerts running with it
+  closed. See [`docs/play-store.md`](docs/play-store.md) and [`PRIVACY.md`](PRIVACY.md).
+- **`deck`** — the kiosk described below.
+
 A Nexus 5X running LineageOS, bolted to a shelf, showing what every Claude Code session on the
 team is burning right now — and letting you stop one with a thumb.
 
@@ -48,7 +55,7 @@ synthetic.*
 | Module | What it is | Tests |
 | --- | --- | --- |
 | `core` | Pure Kotlin/JVM: model, daemon client, SSE, pinned TLS + pairing redeem, team merge, pause state machine, alerts, update check | 242 |
-| `app` | Android: kiosk, wifi, pairing, Compose UI, foreground service, installer | 248 unit + 69 instrumented |
+| `app` | Android: pairing, Compose UI, service, demo; `src/deck` adds wifi and the installer | 260 unit (`deck`), 213 (`play`) + instrumented |
 | `fakedaemon` | Ktor server implementing the daemon contract (pinned HTTPS, pairing) with scripted scenarios | 30 |
 
 ## Build and run
@@ -57,8 +64,8 @@ synthetic.*
 export JAVA_HOME=/opt/homebrew/opt/openjdk@17
 export ANDROID_HOME=/opt/homebrew/share/android-commandlinetools
 
-./gradlew :core:test :fakedaemon:test :app:testDebugUnitTest   # JVM + Robolectric
-./gradlew :app:assembleDebug
+./gradlew :core:test :fakedaemon:test :app:testDeckDebugUnitTest :app:testPlayDebugUnitTest   # JVM + Robolectric
+./gradlew :app:assembleDeckDebug
 ./gradlew ktlintFormat                                          # before every commit
 ```
 
@@ -67,7 +74,7 @@ Instrumented tests need a device. A real Nexus 5X and the emulator are usually b
 
 ```bash
 scripts/emulator.sh                                             # starts/creates the deck29 AVD
-ANDROID_SERIAL=emulator-5554 ./gradlew :app:connectedDebugAndroidTest
+ANDROID_SERIAL=emulator-5554 ./gradlew :app:connectedDeckDebugAndroidTest
 ```
 
 ## Running without a Mac

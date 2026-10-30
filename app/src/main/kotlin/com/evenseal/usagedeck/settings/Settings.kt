@@ -4,6 +4,7 @@
 package com.evenseal.usagedeck.settings
 
 import android.content.SharedPreferences
+import com.evenseal.usagedeck.BuildConfig
 import com.evenseal.usagedeck.core.alerts.AlertThresholds
 import com.evenseal.usagedeck.core.model.UserView
 import com.evenseal.usagedeck.core.pause.PauseSettings
@@ -31,9 +32,11 @@ data class Settings(
     val nightDim: Float = 0.35f,
     val pinSet: Boolean = false,
     /** Dim to [nightDim] during quiet hours. Off keeps full brightness around the clock. */
-    val autoDim: Boolean = true,
-    /** Hold the screen on even off the charger. */
-    val keepScreenOn: Boolean = true,
+    val autoDim: Boolean = BuildConfig.KIOSK,
+    /** Hold the screen on even off the charger. Only a desk display wants that by default. */
+    val keepScreenOn: Boolean = BuildConfig.KIOSK,
+    /** Phone only: keep streaming with the app closed, behind an ongoing notification. */
+    val keepWatching: Boolean = false,
     /** `18:21` versus `6:21 PM` in the status bar. */
     val clock24h: Boolean = true,
     /** Play the chime when an alert shows (quiet hours still silence it). */
@@ -109,6 +112,7 @@ class SettingsStore(private val prefs: SharedPreferences) {
             .putBoolean(KEY_PIN_SET, next.pinSet)
             .putBoolean(KEY_AUTO_DIM, next.autoDim)
             .putBoolean(KEY_KEEP_SCREEN_ON, next.keepScreenOn)
+            .putBoolean(KEY_KEEP_WATCHING, next.keepWatching)
             .putBoolean(KEY_CLOCK_24H, next.clock24h)
             .putBoolean(KEY_SOUND, next.sound)
             .putString(KEY_USER_NAMES, json.encodeToString(NAMES, next.userNames))
@@ -151,6 +155,7 @@ class SettingsStore(private val prefs: SharedPreferences) {
             pinSet = prefs.getBoolean(KEY_PIN_SET, defaults.pinSet),
             autoDim = prefs.getBoolean(KEY_AUTO_DIM, defaults.autoDim),
             keepScreenOn = prefs.getBoolean(KEY_KEEP_SCREEN_ON, defaults.keepScreenOn),
+            keepWatching = prefs.getBoolean(KEY_KEEP_WATCHING, defaults.keepWatching),
             clock24h = prefs.getBoolean(KEY_CLOCK_24H, defaults.clock24h),
             sound = prefs.getBoolean(KEY_SOUND, defaults.sound),
             userNames = prefs.names()
@@ -175,6 +180,7 @@ class SettingsStore(private val prefs: SharedPreferences) {
         const val KEY_WARN = "warn"
         const val KEY_AUTO_DIM = "auto_dim"
         const val KEY_KEEP_SCREEN_ON = "keep_screen_on"
+        const val KEY_KEEP_WATCHING = "keep_watching"
         const val KEY_CLOCK_24H = "clock_24h"
         const val KEY_SOUND = "sound"
         const val KEY_USER_NAMES = "user_names"

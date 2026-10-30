@@ -24,8 +24,7 @@ import com.evenseal.usagedeck.core.model.MachineConfig
 import com.evenseal.usagedeck.core.model.TeamState
 import com.evenseal.usagedeck.core.pairing.PairingClient
 import com.evenseal.usagedeck.core.pause.PauseController
-import com.evenseal.usagedeck.core.update.ReleaseChecker
-import com.evenseal.usagedeck.core.update.Version
+import com.evenseal.usagedeck.demo.DemoDeck
 import com.evenseal.usagedeck.kiosk.AndroidUptime
 import com.evenseal.usagedeck.kiosk.ExitPin
 import com.evenseal.usagedeck.kiosk.KioskManager
@@ -37,17 +36,13 @@ import com.evenseal.usagedeck.pairing.PairingImports
 import com.evenseal.usagedeck.pairing.encryptedPrefs
 import com.evenseal.usagedeck.pause.PrefsEscalationStore
 import com.evenseal.usagedeck.settings.SettingsStore
-import com.evenseal.usagedeck.update.ApkInstaller
-import com.evenseal.usagedeck.update.PackageApkGate
-import com.evenseal.usagedeck.update.PrefsUpdateSkips
-import com.evenseal.usagedeck.update.Updater
-import com.evenseal.usagedeck.wifi.WifiRepository
-import java.io.File
+import com.evenseal.usagedeck.wifi.WifiMonitor
 import java.time.ZoneId
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -103,7 +98,10 @@ class DeckGraph(private val app: Application) {
 
     val settings: SettingsStore = SettingsStore(app.getSharedPreferences(SETTINGS_PREFS, Context.MODE_PRIVATE))
 
-    val wifi: WifiRepository = WifiRepository(app, scope, clock)
+    /** The parts only one build has: the kiosk's wifi and self-update. See `Channel.kt` in each flavor. */
+    val channel: Channel = Channel(app, http, clock, scope, ::updateDeferralReason)
+
+    val wifi: WifiMonitor = channel.wifi
 
     val mode: ModeController = ModeController(app)
 
@@ -118,7 +116,10 @@ class DeckGraph(private val app: Application) {
 
     private val apis = mutableMapOf<String, DaemonApi>()
 
-    val team: StateFlow<TeamState> = clients
+    private var clientSync: Job? = null
+
+    /** What the paired machines report. Pauses and alerts run on this, never on the demo. */
+    private val liveTeam: StateFlow<TeamState> = clients
         .flatMapLatest { map ->
             if (map.isEmpty()) {
                 flowOf(TeamState())
@@ -128,8 +129,15 @@ class DeckGraph(private val app: Application) {
         }
         .stateIn(scope, SharingStarted.Eagerly, TeamState())
 
+    /** "Try the demo": made-up machines for anyone without a daemon, App Review included. */
+    val demo: DemoDeck = DemoDeck(clock, scope)
+
+    /** What the screens draw: the demo while it runs, the paired machines otherwise. */
+    val team: StateFlow<TeamState> = combine(liveTeam, demo.team) { live, shown -> shown ?: live }
+        .stateIn(scope, SharingStarted.Eagerly, TeamState())
+
     val pause: PauseController = PauseController(
-        team = team,
+        team = liveTeam,
         apis = { machineId -> apis[machineId] },
         installId = installId,
         store = PrefsEscalationStore(app.getSharedPreferences(ESCALATION_PREFS, Context.MODE_PRIVATE)),
@@ -145,21 +153,16 @@ class DeckGraph(private val app: Application) {
 
     val notifier: Notifier = Notifier(app, scope)
 
-    val updater: Updater = Updater(
-        checker = ReleaseChecker(BuildConfig.RELEASE_REPO, http),
-        installed = Version.parse(BuildConfig.VERSION_NAME) ?: Version(0, 0, 0, ""),
-        installer = ApkInstaller(app),
-        cacheDir = File(app.cacheDir, "updates"),
-        client = http,
-        deferWhile = ::updateDeferralReason,
-        clock = clock,
-        scope = scope,
-        gate = PackageApkGate(app),
-        skips = PrefsUpdateSkips.open(app)
-    )
-
-    /** Filled in by [DeckService]; null while no service is running. */
+    /** Filled in by [DeckEngine]; null while it is idle, and always on a build with no self-update. */
     var updateChecks: UpdateChecks? = null
+
+    /** Clients, pause timer and alerts, running for as long as something holds them. */
+    val engine: DeckEngine = DeckEngine(this)
+
+    init {
+        // A real pairing ends the demo: from then on the screens show that machine.
+        scope.launch { machineStore.machines.collect { if (it.isNotEmpty()) demo.stop() } }
+    }
 
     /**
      * Spec §12: never swap the APK out from under a gesture or an armed escalation — the user
@@ -173,12 +176,15 @@ class DeckGraph(private val app: Application) {
 
     /** Keeps one [MachineClient] per paired machine, following [MachineStore] as it changes. */
     fun startClients() {
-        scope.launch {
+        if (clientSync != null) return
+        clientSync = scope.launch {
             machineStore.machines.collect { configs -> syncClients(configs) }
         }
     }
 
     fun stopClients() {
+        clientSync?.cancel()
+        clientSync = null
         _clients.value.values.forEach { it.stop() }
         _clients.value = emptyMap()
         apis.clear()
@@ -206,6 +212,9 @@ class DeckGraph(private val app: Application) {
         }
         _clients.value = next
     }
+
+    /** The alert loop's source; separate from [team] so the demo never alerts. */
+    val alertSource: StateFlow<TeamState> get() = liveTeam
 
     private fun newClient(config: MachineConfig): MachineClient {
         // A row from the retired plain-HTTP pairing: shown with a Re-pair card, never contacted.
