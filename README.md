@@ -117,6 +117,10 @@ Remove everything again with `claude-usage uninstall`.
 
 ## Screenshots
 
+<p align="center">
+  <img src="docs/images/app-store-set.png" alt="The six App Store screenshots: limits, sessions, burn rate by project, pausing a project, Apple Watch and widgets, and staying on your network" width="100%">
+</p>
+
 Landscape is where it shines: stand the phone on your desk next to the keyboard.
 
 <p align="center">
