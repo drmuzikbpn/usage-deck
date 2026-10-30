@@ -98,6 +98,16 @@ describe('renderMenubar', () => {
     for (const row of rows) expect(row).toMatch(/\| (refresh=true|bash=)/);
   });
 
+  it('shows an unknown limit as waiting, not as a green ?%', () => {
+    const text = renderMenubar(
+      { running: true, version: '1', summary: summary([limit('session', 5), limit('weekly_scoped:fable', null, { stale: true })]) },
+      NOW,
+      PLUGIN,
+    );
+    expect(text).toContain('⚪ fable: waiting for a reading | refresh=true');
+    expect(text).not.toContain('?%');
+  });
+
   it('has an About submenu with the links and the disclaimer', () => {
     const text = renderMenubar({ running: true, version: '0.1.165', summary: null }, NOW, PLUGIN);
     expect(text).toContain('About Usage Deck\n--claude-usage 0.1.165 | refresh=true\n--Not affiliated with Anthropic');
