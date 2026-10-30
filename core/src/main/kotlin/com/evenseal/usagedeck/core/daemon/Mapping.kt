@@ -35,10 +35,19 @@ fun statusOf(s: String?): LimitStatus = when (s?.lowercase()) {
     else -> LimitStatus.OK
 }
 
-private val CRITICAL_SEVERITIES = setOf("critical", "exceeded", "blocked")
+private val CRITICAL_SEVERITIES = setOf(
+    "critical",
+    "severe",
+    "exceeded",
+    "exhausted",
+    "blocked",
+    "locked",
+    "limit_reached",
+    "over_limit"
+)
 
 /**
- * Status for a limit the daemon's `status.byId` map does not cover (a bare `limits` event).
+ * Status for a row of a bare `limits` event, which has no `status.byId` map.
  * Mirrors daemon spec §23.3: critical on percent or a critical-like severity, warn on percent
  * or any non-`normal` severity.
  */
