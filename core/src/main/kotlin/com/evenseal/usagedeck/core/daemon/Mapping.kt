@@ -53,17 +53,22 @@ private val CRITICAL_SEVERITIES = setOf(
  */
 fun statusFor(limit: LimitDto, thresholds: ThresholdsDto): LimitStatus {
     val severity = limit.severity.lowercase()
+    val percent = limit.percent ?: 0
     return when {
-        limit.percent >= thresholds.critical || severity in CRITICAL_SEVERITIES -> LimitStatus.CRITICAL
-        limit.percent >= thresholds.warn || severity != "normal" -> LimitStatus.WARN
+        percent >= thresholds.critical || severity in CRITICAL_SEVERITIES -> LimitStatus.CRITICAL
+        percent >= thresholds.warn || severity != "normal" -> LimitStatus.WARN
         else -> LimitStatus.OK
     }
 }
 
 fun LimitDto.toModel(status: LimitStatus) =
-    Limit(id, kind, group, percent, severity, resetsAt.toInstantOrNull(), scope?.model, isActive, status)
+    Limit(id, kind, group, percent ?: 0, severity, resetsAt.toInstantOrNull(), scope?.model, isActive, status)
 
-fun SummaryDto.toLimits(): List<Limit> = limits.limits.map { it.toModel(statusOf(status.byId[it.id])) }
+/** A scoped row with no number is left out: it would otherwise read as a confident 0%. */
+fun List<LimitDto>.withoutUnknownScoped() = filterNot { it.kind == "weekly_scoped" && it.percent == null }
+
+fun SummaryDto.toLimits(): List<Limit> =
+    limits.limits.withoutUnknownScoped().map { it.toModel(statusOf(status.byId[it.id])) }
 
 fun PauseStateDto.toModel() = PauseState(
     if (mode == "hard") PauseMode.HARD else PauseMode.SOFT,
