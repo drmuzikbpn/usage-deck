@@ -6,13 +6,15 @@ import { spawn, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { run } from '../src/cli.js';
-import { daemonFilePath } from '../src/clients/http.js';
+import { DaemonClient, daemonFilePath } from '../src/clients/http.js';
 import {
   PLUGIN_FILE,
   PLUGIN_MARKER,
   PLUGIN_RECORD,
+  MENUBAR_READ_ATTEMPTS,
   detailFor,
   pluginScript,
+  readMenubarState,
   removeMenubarPlugin,
   renderMenubar,
   runMenubar,
@@ -287,6 +289,54 @@ describe('claude-usage menubar', () => {
     const c = capture();
     await run(['menubar', '--plugin', 'x.sh'], { ...c.io, configDir: tempConfigDir() });
     expect(c.out()).toContain('Start daemon | color=gray');
+  });
+});
+
+describe('reading the daemon for the menu', () => {
+  const summaryRead = (d: FakeDaemon) => new DaemonClient({ configDir: d.configDir });
+
+  it('retries once, so one slow read does not show Not answering', async () => {
+    const d = await startFakeDaemon();
+    daemons.push(d);
+    d.setPercents({ session: 42 });
+    const real = summaryRead(d);
+    const paths: string[] = [];
+    // A 1 ms timeout makes the real request fail the way it does on a loaded machine.
+    const client = {
+      get: (path: string, opts?: { timeoutMs?: number }) => {
+        paths.push(path);
+        return paths.length === 1 ? real.get(path, { timeoutMs: 1 }) : real.get(path, opts);
+      },
+    };
+    const state = await readMenubarState({ configDir: d.configDir, client });
+    expect(paths).toEqual(['/v1/summary', '/v1/summary']);
+    expect(state.running && state.summary !== null).toBe(true);
+    expect(renderMenubar(state, NOW, PLUGIN)).not.toContain('Not answering');
+  });
+
+  it('reads once when the first read works', async () => {
+    const d = await startFakeDaemon();
+    daemons.push(d);
+    const real = summaryRead(d);
+    let reads = 0;
+    const client = { get: (path: string, opts?: { timeoutMs?: number }) => ((reads += 1), real.get(path, opts)) };
+    await readMenubarState({ configDir: d.configDir, client });
+    expect(reads).toBe(1);
+  });
+
+  it('says Not answering after two failed reads, and stops there', async () => {
+    const d = await startFakeDaemon();
+    daemons.push(d);
+    let reads = 0;
+    const client = {
+      get: async () => {
+        reads += 1;
+        throw new Error('timeout');
+      },
+    };
+    const state = await readMenubarState({ configDir: d.configDir, client });
+    expect(reads).toBe(MENUBAR_READ_ATTEMPTS);
+    expect(renderMenubar(state, NOW, PLUGIN)).toContain('🔴 Not answering');
   });
 });
 

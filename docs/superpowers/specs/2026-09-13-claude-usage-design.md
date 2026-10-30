@@ -2008,6 +2008,8 @@ change, each fail a named test.
 `KeepAlive` restarts only on a non-zero exit, and the Android app sat on WAITING FOR MACHINE
 (issue #60).
 
+- **One slow read is not an outage.** The plugin reads `/v1/summary` up to twice, 2 s each, before
+  it shows `🔴 Not answering`.
 - **Login item, by consent.** launchd restarts the daemon, not the app that draws the menu.
   After writing the plugin, `--install` asks whether to add `/Applications/SwiftBar.app` (or
   `xbar.app`) to the login items, through `/usr/bin/osascript` with the path as argv. It skips the

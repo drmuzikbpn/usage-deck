@@ -17,6 +17,8 @@ import { defaultExec, type ExecRunner } from './service/index.js';
  */
 
 export const MENUBAR_TIMEOUT_MS = 2000;
+/** Reads before the menu says `Not answering`. They run one after the other, within SwiftBar's minute. */
+export const MENUBAR_READ_ATTEMPTS = 2;
 /** A reading older than this is called stale in the menu-bar title. */
 export const MENUBAR_STALE_MS = 15 * 60 * 1000;
 /** `<n>m` is SwiftBar's refresh interval, taken from the file name. */
@@ -265,12 +267,15 @@ export async function readMenubarState(io: Pick<MenubarIO, 'configDir' | 'client
   const configDir = io.configDir ?? resolveConfigDir();
   const info = readDaemonInfo(configDir);
   if (info === null || !isPidAlive(info.pid)) return { running: false };
-  try {
-    const client = io.client ?? new DaemonClient({ configDir, timeoutMs: MENUBAR_TIMEOUT_MS });
-    const body = await client.get('/v1/summary', { timeoutMs: MENUBAR_TIMEOUT_MS });
-    return { running: true, version: info.version, summary: isSummary(body) ? body : null };
-  } catch {
-    return { running: true, version: info.version, summary: null };
+  const client = io.client ?? new DaemonClient({ configDir, timeoutMs: MENUBAR_TIMEOUT_MS });
+  // One slow read on a busy machine is not a daemon that stopped answering.
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      const body = await client.get('/v1/summary', { timeoutMs: MENUBAR_TIMEOUT_MS });
+      return { running: true, version: info.version, summary: isSummary(body) ? body : null };
+    } catch {
+      if (attempt === MENUBAR_READ_ATTEMPTS) return { running: true, version: info.version, summary: null };
+    }
   }
 }
 
