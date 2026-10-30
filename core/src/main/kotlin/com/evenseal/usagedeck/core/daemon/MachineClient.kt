@@ -77,7 +77,6 @@ class MachineClient(
     private var repairJob: Job? = null
     private var pollingJob: Job? = null
     private var etag: String? = null
-    private var lastStatus: StatusDto = StatusDto()
     private var thresholds: ThresholdsDto = ThresholdsDto()
 
     fun start() {
@@ -326,7 +325,6 @@ class MachineClient(
 
     private fun applySnapshot(event: DaemonEvent.Snapshot) {
         val now = clock.now()
-        lastStatus = event.status
         thresholds = event.thresholds
         etag = "W/\"${event.rev}\""
         val sessions = event.sessions.map { it.toModel() }
@@ -409,7 +407,6 @@ class MachineClient(
 
     private fun applySummary(summary: SummaryDto) {
         val now = clock.now()
-        lastStatus = summary.status
         thresholds = summary.thresholds
         val today = summary.today.toModel()
         updateLive {
@@ -435,10 +432,13 @@ class MachineClient(
         }
     }
 
-    /** A bare `limits` payload has no status map; reuse the last one, else derive from thresholds. */
+    /**
+     * A bare `limits` payload has no status map, so derive each status from the row itself. The
+     * last summary's map must not be reused: it describes the old percents, so a week that
+     * reset from 99% to 0% stayed red until the next snapshot.
+     */
     private fun limitsOf(limits: List<LimitDto>): List<Limit> = limits.map { dto ->
-        val known = lastStatus.byId[dto.id]
-        dto.toModel(if (known != null) statusOf(known) else statusFor(dto, thresholds))
+        dto.toModel(statusFor(dto, thresholds))
     }
 
     companion object {

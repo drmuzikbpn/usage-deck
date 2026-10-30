@@ -6,6 +6,7 @@ package com.evenseal.usagedeck.core.daemon
 import com.evenseal.usagedeck.core.FakeClock
 import com.evenseal.usagedeck.core.model.BurnHistory
 import com.evenseal.usagedeck.core.model.Health
+import com.evenseal.usagedeck.core.model.LimitStatus
 import com.evenseal.usagedeck.core.model.MachineConfig
 import com.evenseal.usagedeck.core.model.MachineState
 import com.evenseal.usagedeck.core.model.PauseMode
@@ -387,6 +388,24 @@ class MachineClientTest {
         assertEquals(PauseMode.SOFT, f.client.state.value.rules.single().mode)
         assertTrue(f.api.calls.contains("sessions:null"))
         assertEquals(1, f.client.state.value.sessions.size)
+    }
+
+    @Test
+    fun `a limits event recomputes the status, so a reset week stops being red`() = runTest {
+        val f = fixture()
+        f.events.emit(Connection.Open)
+        f.events.emit(
+            snapshot(rev = 812).copy(status = StatusDto(byId = mapOf("weekly_all" to "critical"), overall = "critical"))
+        )
+        runCurrent()
+
+        f.events.emit(
+            DaemonEvent.Limits(listOf(LimitDto(id = "weekly_all", kind = "weekly_all", percent = 0)), null, false)
+        )
+        runCurrent()
+        val limit = f.client.state.value.limits.single()
+        assertEquals(0, limit.percent)
+        assertEquals(LimitStatus.OK, limit.status)
     }
 
     @Test
