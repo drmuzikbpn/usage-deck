@@ -8,7 +8,7 @@ import { CONFIG_DIR_MODE, CONFIG_FILE_MODE, resolveConfigDir, writeJsonFile } fr
 import { absoluteGitCommonDir } from './sessions/registry.js';
 import { isSessionId } from './sessions/validate.js';
 import type { LimitStatus } from './limits/status.js';
-import type { NormalizedLimit } from './limits/types.js';
+import type { LimitsErrorInfo, NormalizedLimit } from './limits/types.js';
 
 /** §7.1: the hook's own internal HTTP deadline (the registered hook timeout is seconds — §23.11). */
 export const HOOK_DEADLINE_MS = 200;
@@ -64,6 +64,7 @@ export const PAUSED_DIR = 'paused';
 
 export interface SummaryLimits {
   limits: NormalizedLimit[];
+  error?: LimitsErrorInfo | null;
 }
 
 export interface SummaryBody {

@@ -17,7 +17,7 @@ import {
   runMenubar,
 } from '../src/menubar.js';
 import type { SummaryBody } from '../src/hook.js';
-import type { NormalizedLimit } from '../src/limits/types.js';
+import type { LimitsErrorInfo, NormalizedLimit } from '../src/limits/types.js';
 import type { ServiceState } from '../src/service/index.js';
 import { startFakeDaemon, tempConfigDir, type FakeDaemon } from './helpers/fake-daemon.js';
 
@@ -114,6 +114,51 @@ describe('renderMenubar', () => {
   it('treats an unknown headline limit the same way', () => {
     const text = renderMenubar({ running: true, version: '1', summary: summary([limit('weekly_all', null, { stale: true })]) }, NOW, PLUGIN);
     expect(text).toContain('⚪ 7d: waiting for a reading | refresh=true');
+  });
+
+  it('gives each limit a submenu of details', () => {
+    const resetsAt = new Date(NOW + 90 * 60000).toISOString();
+    const text = renderMenubar(
+      { running: true, version: '1', summary: summary([limit('session', 62, { resetsAt, source: 'statusline' })]) },
+      NOW,
+      PLUGIN,
+    );
+    expect(text).toContain('🟢 5h: 62% · resets in 1h 30m | refresh=true\n--Status: ok | refresh=true\n--Resets ');
+    expect(text).toContain("--From Claude Code's status line | refresh=true");
+    expect(text).toContain('--Read 2m ago | refresh=true');
+  });
+
+  describe('why a limit is waiting', () => {
+    const waiting = (error: LimitsErrorInfo | null) => {
+      const body = summary([limit('session', 5), limit('weekly_scoped:fable', null, { stale: true })]);
+      body.limits.error = error;
+      return renderMenubar({ running: true, version: '1', summary: body }, NOW, PLUGIN);
+    };
+
+    it('names the 429 and the next try', () => {
+      const text = waiting({
+        code: 'rate_limited',
+        message: 'x',
+        retryAt: new Date(NOW + 600000).toISOString(),
+      });
+      expect(text).toContain('⚪ fable: waiting for a reading | refresh=true\n--Anthropic is returning HTTP 429 when we try to read this limit | refresh=true\n--Next try: ');
+      expect(text).not.toContain('Next try: soon');
+    });
+
+    it('says soon once the retry time has passed', () => {
+      const text = waiting({ code: 'rate_limited', message: 'x', retryAt: new Date(NOW - 600000).toISOString() });
+      expect(text).toContain('--Next try: soon | refresh=true');
+    });
+
+    it('passes on any other error with its hint', () => {
+      const text = waiting({ code: 'unauthorized', message: 'usage request rejected with 401', hint: 'run claude to log in' });
+      expect(text).toContain("--Can't read this limit: usage request rejected with 401 | refresh=true");
+      expect(text).toContain('--run claude to log in | refresh=true');
+    });
+
+    it('still says something with no error', () => {
+      expect(waiting(null)).toContain("--No reading from Anthropic's usage endpoint yet | refresh=true");
+    });
   });
 
   it('has an About submenu with the links and the disclaimer', () => {

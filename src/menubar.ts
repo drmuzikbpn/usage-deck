@@ -6,7 +6,7 @@ import { DaemonClient, isPidAlive, readDaemonInfo } from './clients/http.js';
 import { resolveConfigDir } from './config.js';
 import { HEADLINE_IDS, type SummaryBody } from './hook.js';
 import type { LimitStatus } from './limits/status.js';
-import type { NormalizedLimit } from './limits/types.js';
+import type { LimitSource, LimitsErrorInfo, NormalizedLimit } from './limits/types.js';
 import { defaultExec, type ExecRunner } from './service/index.js';
 
 /**
@@ -64,10 +64,48 @@ function resets(iso: string | null, now: number): string {
   return ` · resets in ${h >= 24 ? `${Math.floor(h / 24)}d ${h % 24}h` : `${h}h ${min % 60}m`}`;
 }
 
-/** A dropdown row for one limit. Unknown is not fine: a green dot beside `?%` is a contradiction. */
-function limitRow(limit: NormalizedLimit, label: string, status: LimitStatus | undefined, now: number): string {
-  if (limit.percent === null) return info(`⚪ ${label}: waiting for a reading`);
-  return info(`${DOTS[status ?? 'ok']}${label}: ${limit.percent}%${resets(limit.resetsAt, now)}${limit.stale === true ? ' ⚠︎' : ''}`);
+const WHEN: Intl.DateTimeFormatOptions = { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' };
+const clock = (iso: string): string => new Date(iso).toLocaleString(undefined, WHEN);
+
+/** Why a limit has no number: what upstream is answering, and when it is tried again. */
+function waitingDetail(error: LimitsErrorInfo | null | undefined, now: number): string[] {
+  if (error === null || error === undefined) return ["No reading from Anthropic's usage endpoint yet"];
+  if (error.code !== 'rate_limited') return [`Can't read this limit: ${error.message}`, ...(error.hint === undefined ? [] : [error.hint])];
+  const retry = error.retryAt === undefined ? Number.NaN : Date.parse(error.retryAt);
+  return [
+    'Anthropic is returning HTTP 429 when we try to read this limit',
+    Number.isFinite(retry) && retry > now ? `Next try: ${clock(error.retryAt ?? '')}` : 'Next try: soon',
+    'It clears on its own; there is nothing to do',
+  ];
+}
+
+const SOURCES: Record<LimitSource, string> = {
+  statusline: "From Claude Code's status line",
+  upstream: "From Anthropic's usage endpoint",
+};
+
+function limitDetail(limit: NormalizedLimit, status: LimitStatus | undefined, now: number): string[] {
+  const asOf = typeof limit.asOf === 'string' ? Date.parse(limit.asOf) : Number.NaN;
+  return [
+    `Status: ${status ?? 'ok'}`,
+    ...(limit.resetsAt === null ? [] : [`Resets ${clock(limit.resetsAt)}`]),
+    ...(limit.source === undefined ? [] : [SOURCES[limit.source]]),
+    ...(Number.isFinite(asOf) ? [`Read ${ago(now - asOf)}`] : []),
+    ...(limit.stale === true ? ['This number may be out of date'] : []),
+  ];
+}
+
+/**
+ * A dropdown row for one limit, with its details one level down. Unknown is not fine: a green
+ * dot beside `?%` is a contradiction, so that row explains the wait instead.
+ */
+function limitRows(limit: NormalizedLimit, label: string, status: LimitStatus | undefined, error: LimitsErrorInfo | null | undefined, now: number): string[] {
+  const row =
+    limit.percent === null
+      ? `⚪ ${label}: waiting for a reading`
+      : `${DOTS[status ?? 'ok']}${label}: ${limit.percent}%${resets(limit.resetsAt, now)}${limit.stale === true ? ' ⚠︎' : ''}`;
+  const detail = limit.percent === null ? waitingDetail(error, now) : limitDetail(limit, status, now);
+  return [info(row), ...detail.map((d) => `--${info(d)}`)];
 }
 
 /** Single-quote for the plugin's `sh` script. */
@@ -105,7 +143,7 @@ export function renderMenubar(state: MenubarState, now: number, plugin: string |
       if (limit === undefined) continue;
       if (limit.percent === null) unknown = true;
       parts.push(`${SHORT_LABELS[id] ?? id} ${limit.percent === null ? '—' : `${limit.percent}%`}`);
-      menu.push(limitRow(limit, SHORT_LABELS[id] ?? id, summary?.status.byId[id], now));
+      menu.push(...limitRows(limit, SHORT_LABELS[id] ?? id, summary?.status.byId[id], summary?.limits.error, now));
       if (limit.stale === true) stale = true;
       const at = typeof limit.asOf === 'string' ? Date.parse(limit.asOf) : Number.NaN;
       if (Number.isFinite(at)) newest = Math.max(newest, at);
@@ -124,7 +162,7 @@ export function renderMenubar(state: MenubarState, now: number, plugin: string |
     for (const limit of summary?.limits.limits ?? []) {
       if ((HEADLINE_IDS as readonly string[]).includes(limit.id)) continue;
       const label = limit.scope?.model ?? limit.id.replace(/^weekly_scoped:/, '');
-      lines.push(limitRow(limit, label, summary?.status.byId[limit.id], now));
+      lines.push(...limitRows(limit, label, summary?.status.byId[limit.id], summary?.limits.error, now));
     }
     if (Number.isFinite(newest)) {
       lines.push(info(`${stale ? '⚠︎ Stale: updated' : 'Updated'} ${ago(now - newest)}`));
