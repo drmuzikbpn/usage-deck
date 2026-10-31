@@ -67,7 +67,7 @@ network), prints a single-use `usagedeck://pair?...` link and a token generated 
 `/sdcard/Android/data/com.evenseal.usagedeck/files/pairing-import.json`, which only a **debug**
 build reads. It refuses a non-emulator serial. Never pair the emulator with a real daemon and never
 print a real pairing link. `connectedDeckDebugAndroidTest` wipes the pairing, so pair again afterwards.
-Landscape is `adb -s emulator-5554 emu rotate`. Show UI changes there and wait for the owner's OK
+Landscape is `adb -s emulator-5554 emu rotate`; `RotationTest` turns the real activity, and `play` obeys the rotation lock (`user`) where `deck` follows the sensor. Show UI changes there and wait for the owner's OK
 before pushing a release. `scripts/emulator.sh` needs the SDK packages `emulator` and
 `system-images;android-29;default;arm64-v8a` (`sdkmanager` installs them).
 

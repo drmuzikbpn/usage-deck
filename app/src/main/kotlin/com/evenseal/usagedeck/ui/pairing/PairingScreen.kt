@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
@@ -108,46 +110,48 @@ fun PairingScreen(
             )
         }
 
-        Text(
-            modifier = Modifier.padding(10.dp),
-            text = QrScanActivity.WARNING,
-            color = DeckColors.warn,
-            fontFamily = DeckType.text,
-            fontSize = 13.sp
-        )
-
-        Text(
-            modifier = Modifier.padding(horizontal = 10.dp),
-            text = "On the Mac: claude-usage pair",
-            color = DeckColors.muted,
-            fontFamily = DeckType.mono,
-            fontSize = 12.sp
-        )
-
-        TextButton(
-            modifier = Modifier.padding(6.dp),
-            enabled = !busy,
-            onClick = { scan.launch(Intent(context, QrScanActivity::class.java)) }
-        ) {
-            Text("Scan QR", color = DeckColors.accent, fontFamily = DeckType.text, fontSize = 15.sp)
-        }
-
-        if (busy) {
-            LinearProgressIndicator(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp),
-                color = DeckColors.accent,
-                trackColor = DeckColors.surface
-            )
-        }
-
-        status?.let {
+        Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())) {
             Text(
                 modifier = Modifier.padding(10.dp),
-                text = it.message,
-                color = DeckColors.fg,
+                text = QrScanActivity.WARNING,
+                color = DeckColors.warn,
                 fontFamily = DeckType.text,
                 fontSize = 13.sp
             )
+
+            Text(
+                modifier = Modifier.padding(horizontal = 10.dp),
+                text = "On the Mac: claude-usage pair",
+                color = DeckColors.muted,
+                fontFamily = DeckType.mono,
+                fontSize = 12.sp
+            )
+
+            TextButton(
+                modifier = Modifier.padding(6.dp),
+                enabled = !busy,
+                onClick = { scan.launch(Intent(context, QrScanActivity::class.java)) }
+            ) {
+                Text("Scan QR", color = DeckColors.accent, fontFamily = DeckType.text, fontSize = 15.sp)
+            }
+
+            if (busy) {
+                LinearProgressIndicator(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp),
+                    color = DeckColors.accent,
+                    trackColor = DeckColors.surface
+                )
+            }
+
+            status?.let {
+                Text(
+                    modifier = Modifier.padding(10.dp),
+                    text = it.message,
+                    color = DeckColors.fg,
+                    fontFamily = DeckType.text,
+                    fontSize = 13.sp
+                )
+            }
         }
     }
 

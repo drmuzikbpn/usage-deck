@@ -53,8 +53,8 @@ Usage Deck is an independent app, not affiliated with Anthropic.
 - **Type:** `specialUse`.
 - **Description:** `Optional, off by default. When the user turns on "Keep watching in the background" in Settings, the app keeps a connection to the user's own computers so it can alert them before they hit a usage limit. An ongoing notification stays visible, and turning the switch off stops the service.`
 - **User impact if deferred:** `A usage-limit alert would arrive after the limit was reached, when it is too late to act on it.`
-- **Demo video:** still to record: Settings, turn the switch on, leave the app, show the
-  notification, return, turn it off.
+- **Demo video:** recorded on a signed bundle: Settings, turn the switch on, leave the app, show
+  the notification, return, turn it off. Play wants a link, so it needs uploading first.
 
 ## Release
 

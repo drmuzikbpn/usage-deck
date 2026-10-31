@@ -6,6 +6,7 @@ package com.evenseal.usagedeck.pairing
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.graphics.Color
 import android.os.Bundle
 import android.util.TypedValue
@@ -47,14 +48,19 @@ class QrScanActivity : ComponentActivity() {
             setStatusText("")
         }
 
+        // Sideways the warning sits beside the camera: above it, it leaves too short a viewfinder.
+        val sideways = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
         val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
             setBackgroundColor(GROUND)
-            addView(warningView(), matchWidth())
-            addView(
-                scanner,
-                LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
-            )
+            if (sideways) {
+                orientation = LinearLayout.HORIZONTAL
+                addView(warningView(), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 2f))
+                addView(scanner, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 3f))
+            } else {
+                orientation = LinearLayout.VERTICAL
+                addView(warningView(), matchWidth())
+                addView(scanner, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+            }
         }
         // Android 15 and up draw this activity edge to edge at the Play flavor's target.
         ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->

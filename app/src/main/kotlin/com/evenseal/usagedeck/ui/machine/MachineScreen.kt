@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -80,18 +82,20 @@ fun MachineScreen(
             return@Column
         }
 
-        RepairCard(machine = machine, onRepair = onRepair)
+        Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+            RepairCard(machine = machine, onRepair = onRepair)
 
-        Field("user", machine.user?.emailAddress ?: machine.user?.displayName ?: "unknown")
-        Field("address", "${machine.config.addr}:${machine.config.port}")
-        Field("daemon version", machine.version ?: "unknown")
-        Field("health", healthLine(machine, now))
-        Field("transport", transportLabel(machine.transport))
-        Field("update", updateLine(machine.update))
-        machine.lastError?.let { Field("last error", it) }
+            Field("user", machine.user?.emailAddress ?: machine.user?.displayName ?: "unknown")
+            Field("address", "${machine.config.addr}:${machine.config.port}")
+            Field("daemon version", machine.version ?: "unknown")
+            Field("health", healthLine(machine, now))
+            Field("transport", transportLabel(machine.transport))
+            Field("update", updateLine(machine.update))
+            machine.lastError?.let { Field("last error", it) }
 
-        TextButton(onClick = { confirming = true }, modifier = Modifier.padding(6.dp)) {
-            Text("Unpair", color = DeckColors.crit, fontFamily = DeckType.text)
+            TextButton(onClick = { confirming = true }, modifier = Modifier.padding(6.dp)) {
+                Text("Unpair", color = DeckColors.crit, fontFamily = DeckType.text)
+            }
         }
     }
 

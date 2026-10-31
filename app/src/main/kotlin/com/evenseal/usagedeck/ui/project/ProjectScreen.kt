@@ -76,16 +76,16 @@ fun ProjectScreen(vm: DeckViewModel, machineId: String, key: String, onBack: () 
             return@Column
         }
 
-        Tiles(vm = vm, project = project)
-
-        BurnChart(
-            series = vm.projectSeries(machineId, key),
-            modifier = Modifier.fillMaxWidth().height(120.dp).padding(horizontal = 10.dp, vertical = 6.dp)
-        )
-
-        TokenBreakdown(tokens = project.liveTokens)
-
+        // All one list, so a phone on its side can reach the sessions under the chart.
         LazyColumn(modifier = Modifier.weight(1f)) {
+            item { Tiles(vm = vm, project = project) }
+            item {
+                BurnChart(
+                    series = vm.projectSeries(machineId, key),
+                    modifier = Modifier.fillMaxWidth().height(120.dp).padding(horizontal = 10.dp, vertical = 6.dp)
+                )
+            }
+            item { TokenBreakdown(tokens = project.liveTokens) }
             items(project.sessions, key = { it.sessionId }) { session ->
                 SessionDetailRow(vm = vm, machineId = machineId, session = session, now = now)
             }

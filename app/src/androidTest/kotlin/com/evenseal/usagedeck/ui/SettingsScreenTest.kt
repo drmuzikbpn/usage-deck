@@ -131,13 +131,13 @@ class SettingsScreenTest {
     fun displayAndSoundTogglesWriteTheirSettings() {
         show(Settings(autoDim = true, keepScreenOn = true))
         compose.onNodeWithText("Wifi").assertExists()
-        compose.onNodeWithText("24-hour clock").performClick()
+        compose.onNodeWithText("24-hour clock").performScrollTo().performClick()
         assertEquals(false, latest().clock24h)
-        compose.onNodeWithText("Auto-dim at night").performClick()
+        compose.onNodeWithText("Auto-dim at night").performScrollTo().performClick()
         assertEquals(false, latest().autoDim)
-        compose.onNodeWithText("Alert sound").performClick()
+        compose.onNodeWithText("Alert sound").performScrollTo().performClick()
         assertEquals(false, latest().sound)
-        compose.onNodeWithText("Keep screen on").performClick()
+        compose.onNodeWithText("Keep screen on").performScrollTo().performClick()
         assertEquals(false, latest().keepScreenOn)
     }
 
