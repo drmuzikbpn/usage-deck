@@ -35,6 +35,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -321,15 +322,26 @@ private fun RailUser(user: UserView, name: String, now: Instant, use24h: Boolean
         // Each figure sits centred in a ring that closes as the window fills (a full circle is
         // 100 %); the two rings share a bottom edge and each counts down to its own reset.
         Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            // Daemon §23.68: with no 5-hour window the week is the headline, so the two rings swap
+            // sizes but keep their places — 5 h still on the left.
+            val swap = user.noFiveHourLimit
             RingNumber(
                 limit = user.fiveHour,
-                size = FIVE_HOUR_SP,
-                ring = FIVE_HOUR_RING,
+                size = if (swap) SEVEN_DAY_SP else FIVE_HOUR_SP,
+                ring = if (swap) SEVEN_DAY_RING else FIVE_HOUR_RING,
                 now = now,
                 use24h = use24h,
-                noLimit = user.noFiveHourLimit
+                noLimit = swap,
+                modifier = Modifier.testTag(RING_TAG + "session")
             )
-            RingNumber(limit = user.sevenDay, size = SEVEN_DAY_SP, ring = SEVEN_DAY_RING, now = now, use24h = use24h)
+            RingNumber(
+                limit = user.sevenDay,
+                size = if (swap) FIVE_HOUR_SP else SEVEN_DAY_SP,
+                ring = if (swap) FIVE_HOUR_RING else SEVEN_DAY_RING,
+                now = now,
+                use24h = use24h,
+                modifier = Modifier.testTag(RING_TAG + "weekly_all")
+            )
         }
     }
 }
@@ -417,10 +429,15 @@ private val PAGE_DOT = 5.dp
 private const val STALE_ALPHA = 0.55f
 private const val FIVE_HOUR_SP = 56
 private const val SEVEN_DAY_SP = 26
-private const val NONE_SP = 22
+
+/** "none" fits inside the small ring, where it now sits (§23.68). */
+private const val NONE_SP = 15
 private val FIVE_HOUR_RING = 104.dp
 private val SEVEN_DAY_RING = 60.dp
 private val RING_STROKE = 5.dp
+
+/** Test tag prefix of a rail ring; the limit id follows. */
+const val RING_TAG = "ring "
 
 /** Content description prefix of a ring's reset countdown; the limit id follows. */
 const val RESET_COUNTDOWN = "resets in"
