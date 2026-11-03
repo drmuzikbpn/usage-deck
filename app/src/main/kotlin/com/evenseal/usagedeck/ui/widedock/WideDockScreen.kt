@@ -332,7 +332,7 @@ private fun RailUser(user: UserView, name: String, now: Instant, use24h: Boolean
                 now = now,
                 use24h = use24h,
                 noLimit = swap,
-                modifier = Modifier.testTag(RING_TAG + "session")
+                tag = RING_TAG + "session"
             )
             RingNumber(
                 limit = user.sevenDay,
@@ -340,7 +340,7 @@ private fun RailUser(user: UserView, name: String, now: Instant, use24h: Boolean
                 ring = if (swap) FIVE_HOUR_RING else SEVEN_DAY_RING,
                 now = now,
                 use24h = use24h,
-                modifier = Modifier.testTag(RING_TAG + "weekly_all")
+                tag = RING_TAG + "weekly_all"
             )
         }
     }
@@ -357,6 +357,7 @@ private fun RingNumber(
     ring: Dp,
     now: Instant,
     use24h: Boolean,
+    tag: String,
     modifier: Modifier = Modifier,
     noLimit: Boolean = false
 ) {
@@ -365,12 +366,16 @@ private fun RingNumber(
     val color = limit?.let { DeckColors.of(it.status) } ?: DeckColors.dim
     val fraction = (limit?.percent ?: 0).coerceIn(0, 100) / 100f
     val track = DeckColors.line
+    // The column is exactly the ring's width; captions wider than it overflow it centred
+    // (`wrapContentWidth(unbounded)`) instead of widening it. A caption that widened the left
+    // column squeezed the right ring into an oval: the rail is 176 dp inside and the rings,
+    // 104 + 10 + 60, need 174 of it.
     Column(
-        modifier = modifier,
+        modifier = modifier.width(ring),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        Box(modifier = Modifier.size(ring), contentAlignment = Alignment.Center) {
+        Box(modifier = Modifier.size(ring).testTag(tag), contentAlignment = Alignment.Center) {
             Canvas(modifier = Modifier.matchParentSize()) {
                 val stroke = RING_STROKE.toPx()
                 val inset = stroke / 2

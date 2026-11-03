@@ -77,6 +77,9 @@ class WideDockScreenTest {
         val week = compose.onNodeWithTag(RING_TAG + "weekly_all").fetchSemanticsNode().boundsInRoot
         assertTrue(week.width > none.width)
         assertTrue(none.left < week.left)
+        // Rings, not ovals: a wide caption must not squeeze either one.
+        assertEquals(none.height, none.width, 1f)
+        assertEquals(week.height, week.width, 1f)
     }
 
     @Test
@@ -85,6 +88,8 @@ class WideDockScreenTest {
         val five = compose.onAllNodesWithTag(RING_TAG + "session")[0].fetchSemanticsNode().boundsInRoot
         val week = compose.onAllNodesWithTag(RING_TAG + "weekly_all")[0].fetchSemanticsNode().boundsInRoot
         assertTrue(five.width > week.width)
+        assertEquals(five.height, five.width, 1f)
+        assertEquals(week.height, week.width, 1f)
     }
 
     @Test
