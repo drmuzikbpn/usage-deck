@@ -675,6 +675,10 @@ in that payload. Unknown top-level keys (including unreleased windows) are ignor
 `weekly_all`, the matching `five_hour` / `seven_day` carries that observation's unrounded
 figure instead, so it never lags `limits[]` (§23.37). An entry whose `resetsAt` has passed
 has `utilization: null` (§23.40). Check provenance on the `limits[]` row. `seven_day_opus` and friends are not promised.
+`noSessionLimit` is `true` when there is a `weekly_all` row but no `session` row: Anthropic
+reports a week and no 5-hour window, so the plan has none. Clients should say so ("5h: no
+limit on this plan") instead of showing a gap. It is `false` otherwise, including before
+anything is known, and absent from a daemon older than §23.68.
 `extraUsage` is `{ isEnabled, utilization, spendLimitReached }` from upstream
 `extra_usage`, or `null`. Upstream's dollar-denominated `spend` object is surfaced only
 through `extraUsage` and `raw` — which is why our token endpoint is `/v1/tokens`, not

@@ -4,6 +4,12 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+### Fixed (limits)
+- A plan with no 5-hour window says so instead of leaving a gap. Anthropic no longer reports a
+  5-hour window for verified accounts on the top plan, so `/v1/limits` now carries
+  `noSessionLimit: true`, the menu bar shows `5h: no limit on this plan`, and the MCP headline
+  says `session none on this plan` (§23.68, issue #102).
+
 ### Fixed (menu bar)
 - One slow read no longer shows a red `Not answering`: the menu tries twice first (issue #97).
 

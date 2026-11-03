@@ -65,6 +65,8 @@ export const PAUSED_DIR = 'paused';
 export interface SummaryLimits {
   limits: NormalizedLimit[];
   error?: LimitsErrorInfo | null;
+  /** §23.68: the plan has no 5-hour window. */
+  noSessionLimit?: boolean;
 }
 
 export interface SummaryBody {

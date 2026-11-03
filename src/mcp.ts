@@ -103,6 +103,8 @@ function limitsHeadline(body: unknown, overall?: LimitStatus | null, prefix?: st
   const rec = record(body);
   const limits = array(rec['limits']).filter((l): l is NormalizedLimit => typeof l === 'object' && l !== null);
   const parts: string[] = prefix === undefined ? [] : [prefix];
+  // §23.68: a plan with no 5-hour window says so, so its absence does not read as missing data.
+  if (rec['noSessionLimit'] === true && !limits.some((l) => l.id === 'session')) parts.push('session none on this plan');
   if (limits.length === 0) parts.push('no limits data yet');
   else parts.push(...limits.map(limitPart));
   if (overall !== undefined && overall !== null) parts.push(`status ${overall}`);
@@ -233,7 +235,8 @@ const TOOL_DEFS: readonly ToolDef[] = [
         'instant the window rolls over. ' +
         RESETS_NOTE +
         ' `id` is `session` for the rolling session window, `weekly_all` for the whole account week, and ' +
-        '`weekly_scoped:<model>` for a per-model week. `stale: true` means the last refresh failed and ' +
+        '`weekly_scoped:<model>` for a per-model week. `noSessionLimit: true` means the plan has no ' +
+        'rolling session window at all (only weeks), not that its reading is missing. `stale: true` means the last refresh failed and ' +
         'these numbers are from an earlier successful one. Cheap; safe to call often.',
       inputSchema: NO_ARGS,
       annotations: { readOnlyHint: true, openWorldHint: false },
