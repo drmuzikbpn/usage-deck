@@ -49,6 +49,7 @@ import com.evenseal.usagedeck.ui.components.HoldTimeout
 import com.evenseal.usagedeck.ui.components.HomeEmpty
 import com.evenseal.usagedeck.ui.components.HomeEmptyBody
 import com.evenseal.usagedeck.ui.components.LimitBar
+import com.evenseal.usagedeck.ui.components.NoLimit
 import com.evenseal.usagedeck.ui.components.PauseButton
 import com.evenseal.usagedeck.ui.components.PauseVisual
 import com.evenseal.usagedeck.ui.components.REORDER_SLIDE
@@ -287,12 +288,18 @@ internal fun UserBlock(
                             maxLines = 1
                         )
                     }
-                    QuotaGlance(label = "5h", limit = user.fiveHour)
+                    QuotaGlance(label = "5h", limit = user.fiveHour, noLimit = user.noFiveHourLimit)
                     QuotaGlance(label = "7d", limit = user.sevenDay)
                 }
             }
             if (expanded) {
-                LimitBar(label = "5h", limit = user.fiveHour, now = now, use24h = use24h)
+                LimitBar(
+                    label = "5h",
+                    limit = user.fiveHour,
+                    now = now,
+                    use24h = use24h,
+                    noLimit = user.noFiveHourLimit
+                )
                 LimitBar(label = "7d", limit = user.sevenDay, now = now, use24h = use24h)
                 if (user.scoped.isNotEmpty()) {
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -311,15 +318,16 @@ internal fun UserBlock(
 
 /** `5h 42%` at a glance for the folded user row; colour carries the window's status. */
 @Composable
-private fun QuotaGlance(label: String, limit: Limit?) {
+private fun QuotaGlance(label: String, limit: Limit?, noLimit: Boolean = false) {
+    val none = noLimit && limit == null
     Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
         Text(text = label, color = DeckColors.muted, fontFamily = DeckType.mono, fontSize = 11.sp)
         Text(
-            text = limit?.percent?.let { "$it%" } ?: "—",
+            text = limit?.percent?.let { "$it%" } ?: if (none) NoLimit.SHORT else "—",
             color = limit?.let { DeckColors.of(it.status) } ?: DeckColors.dim,
             fontFamily = DeckType.numeral,
             fontWeight = FontWeight.Medium,
-            fontSize = 16.sp,
+            fontSize = if (none) 12.sp else 16.sp,
             maxLines = 1,
             softWrap = false,
             modifier = Modifier.width(QUOTA_WIDTH)

@@ -76,7 +76,7 @@ ANDROID_SERIAL=emulator-5554 ./gradlew :app:connectedDebugAndroidTest
 the app runs on an emulator with nothing else:
 
 ```bash
-scripts/fakedaemon.sh warnCrossing      # also: idle, freeze, machineDrop, tokenRotated
+scripts/fakedaemon.sh warnCrossing      # also: idle, freeze, machineDrop, tokenRotated, noFiveHour
 scripts/pair-emulator.sh                # in another terminal: pairs the debug build on the emulator
 ```
 

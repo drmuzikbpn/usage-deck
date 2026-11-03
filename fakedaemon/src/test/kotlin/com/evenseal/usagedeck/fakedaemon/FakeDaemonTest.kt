@@ -437,12 +437,21 @@ class FakeDaemonTest {
     }
 
     @Test
+    fun `noFiveHour serves weeks only`() {
+        val s = FakeState(name = "studio")
+        Scenarios.noFiveHour.init(s)
+        assertEquals(null, s.limit("session"))
+        assertTrue(s.limit("weekly_all") != null)
+    }
+
+    @Test
     fun `scenarios resolve by name and default to idle`() {
         assertEquals("idle", Scenarios.byName("idle").name)
         assertEquals("warnCrossing", Scenarios.byName("warnCrossing").name)
         assertEquals("freeze", Scenarios.byName("freeze").name)
         assertEquals("machineDrop", Scenarios.byName("machineDrop").name)
         assertEquals("tokenRotated", Scenarios.byName("tokenRotated").name)
+        assertEquals("noFiveHour", Scenarios.byName("noFiveHour").name)
         assertEquals("idle", Scenarios.byName("nonsense").name)
     }
 

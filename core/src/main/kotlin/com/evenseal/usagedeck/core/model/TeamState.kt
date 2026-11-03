@@ -25,6 +25,14 @@ data class UserView(
 ) {
     val fiveHour: Limit? get() = limits.firstOrNull { it.id == "session" }
     val sevenDay: Limit? get() = limits.firstOrNull { it.id == "weekly_all" }
+
+    /**
+     * Daemon §23.68: a week but no 5-hour window means the plan has none (Anthropic dropped it for
+     * verified accounts on its top plan). Show "no limit", not the `—` of a reading not yet in.
+     * Derived from `limits[]` exactly as the daemon derives its `noSessionLimit`, so older daemons
+     * get it too.
+     */
+    val noFiveHourLimit: Boolean get() = fiveHour == null && sevenDay != null
     val scoped: List<Limit> get() = limits.filter { it.kind == "weekly_scoped" }
 }
 

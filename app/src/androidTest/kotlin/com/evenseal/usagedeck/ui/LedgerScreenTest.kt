@@ -26,6 +26,7 @@ import com.evenseal.usagedeck.core.pause.Escalation
 import com.evenseal.usagedeck.core.pause.PauseOutcome
 import com.evenseal.usagedeck.core.pause.PauseTarget
 import com.evenseal.usagedeck.settings.Settings
+import com.evenseal.usagedeck.ui.components.NoLimit
 import com.evenseal.usagedeck.ui.components.PauseButtonDefaults
 import com.evenseal.usagedeck.ui.components.RENAME_FIELD
 import com.evenseal.usagedeck.ui.components.RENAME_SAVE
@@ -72,6 +73,16 @@ class LedgerScreenTest {
         compose.onAllNodesWithText("Sam").assertCountEquals(2)
         compose.onNodeWithText("42%").assertExists()
         compose.onNodeWithText("77%").assertExists()
+    }
+
+    @Test
+    fun aPlanWithNoFiveHourWindowSaysNoneNotDash() {
+        val adam = Fx.machine("m1", "Adam", "adam@example.com", fiveHour = 0, sevenDay = 6)
+        val weeklyOnly = adam.copy(limits = adam.limits.filter { it.id != "session" })
+        show(fakeViewModel(team = TeamState(listOf(weeklyOnly))))
+        compose.onNodeWithText(NoLimit.SHORT).assertExists()
+        compose.onNodeWithText("6%").assertExists()
+        compose.onNodeWithText("—").assertDoesNotExist()
     }
 
     @Test

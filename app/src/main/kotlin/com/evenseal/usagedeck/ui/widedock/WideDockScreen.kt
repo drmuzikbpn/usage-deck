@@ -55,6 +55,7 @@ import com.evenseal.usagedeck.ui.components.Format
 import com.evenseal.usagedeck.ui.components.HomeEmpty
 import com.evenseal.usagedeck.ui.components.HomeEmptyBody
 import com.evenseal.usagedeck.ui.components.MachineWaitRow
+import com.evenseal.usagedeck.ui.components.NoLimit
 import com.evenseal.usagedeck.ui.components.PauseVisual
 import com.evenseal.usagedeck.ui.components.PrimaryButton
 import com.evenseal.usagedeck.ui.components.REORDER_SLIDE
@@ -320,7 +321,14 @@ private fun RailUser(user: UserView, name: String, now: Instant, use24h: Boolean
         // Each figure sits centred in a ring that closes as the window fills (a full circle is
         // 100 %); the two rings share a bottom edge and each counts down to its own reset.
         Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            RingNumber(limit = user.fiveHour, size = FIVE_HOUR_SP, ring = FIVE_HOUR_RING, now = now, use24h = use24h)
+            RingNumber(
+                limit = user.fiveHour,
+                size = FIVE_HOUR_SP,
+                ring = FIVE_HOUR_RING,
+                now = now,
+                use24h = use24h,
+                noLimit = user.noFiveHourLimit
+            )
             RingNumber(limit = user.sevenDay, size = SEVEN_DAY_SP, ring = SEVEN_DAY_RING, now = now, use24h = use24h)
         }
     }
@@ -337,8 +345,11 @@ private fun RingNumber(
     ring: Dp,
     now: Instant,
     use24h: Boolean,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    noLimit: Boolean = false
 ) {
+    // Daemon §23.68: the plan has no such window — an empty ring that says so, not a pending `—`.
+    val none = noLimit && limit == null
     val color = limit?.let { DeckColors.of(it.status) } ?: DeckColors.dim
     val fraction = (limit?.percent ?: 0).coerceIn(0, 100) / 100f
     val track = DeckColors.line
@@ -366,16 +377,16 @@ private fun RingNumber(
                 }
             }
             Text(
-                text = limit?.percent?.toString() ?: "—",
+                text = limit?.percent?.toString() ?: if (none) NoLimit.SHORT else "—",
                 color = color,
                 fontFamily = DeckType.numeral,
                 fontWeight = FontWeight.SemiBold,
-                fontSize = size.sp,
-                lineHeight = size.sp
+                fontSize = if (none) NONE_SP.sp else size.sp,
+                lineHeight = if (none) NONE_SP.sp else size.sp
             )
         }
         Text(
-            text = Format.resetCountdown(limit?.resetsAt, now),
+            text = if (none) NoLimit.RING_CAPTION else Format.resetCountdown(limit?.resetsAt, now),
             color = DeckColors.dim,
             fontFamily = DeckType.mono,
             fontSize = 11.sp,
@@ -386,7 +397,7 @@ private fun RingNumber(
                 .semantics { contentDescription = "$RESET_COUNTDOWN ${limit?.id ?: "none"}" }
         )
         Text(
-            text = Format.resetAt(limit?.resetsAt, now, ZoneId.systemDefault(), use24h),
+            text = if (none) NoLimit.CAPTION else Format.resetAt(limit?.resetsAt, now, ZoneId.systemDefault(), use24h),
             color = DeckColors.dim,
             fontFamily = DeckType.mono,
             fontSize = 10.sp,
@@ -406,6 +417,7 @@ private val PAGE_DOT = 5.dp
 private const val STALE_ALPHA = 0.55f
 private const val FIVE_HOUR_SP = 56
 private const val SEVEN_DAY_SP = 26
+private const val NONE_SP = 22
 private val FIVE_HOUR_RING = 104.dp
 private val SEVEN_DAY_RING = 60.dp
 private val RING_STROKE = 5.dp

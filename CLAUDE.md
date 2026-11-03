@@ -31,7 +31,7 @@ export ANDROID_HOME=/opt/homebrew/share/android-commandlinetools
 
 scripts/emulator.sh                                             # start/create the deck29 AVD
 ANDROID_SERIAL=emulator-5554 ./gradlew :app:connectedDebugAndroidTest
-scripts/fakedaemon.sh warnCrossing                              # idle | warnCrossing | freeze | machineDrop | tokenRotated
+scripts/fakedaemon.sh warnCrossing                              # idle | warnCrossing | freeze | machineDrop | tokenRotated | noFiveHour
 scripts/pair-emulator.sh                                        # pairs the emulator's debug build with it
 scripts/public-check.sh --self-test
 ```

@@ -140,7 +140,23 @@ object Scenarios {
         private val ROTATE_STEP = 5
     }
 
+    /**
+     * Daemon §23.68: the plan has no 5-hour window, so the body carries weeks only. The deck
+     * should say "none · on this plan", not show the `—` of a reading not yet in.
+     */
+    val noFiveHour: Scenario = object : Scenario {
+        override val name = "noFiveHour"
+
+        override fun init(s: FakeState) {
+            s.limits = s.limits.filter { it.id != "session" }
+            s.status = s.status.copy(byId = s.status.byId - "session")
+        }
+
+        override fun step(s: FakeState, n: Int, emit: (String, String) -> Unit) = Unit
+    }
+
     fun byName(n: String): Scenario = when (n) {
+        noFiveHour.name -> noFiveHour
         warnCrossing.name -> warnCrossing
         freeze.name -> freeze
         machineDrop.name -> machineDrop
