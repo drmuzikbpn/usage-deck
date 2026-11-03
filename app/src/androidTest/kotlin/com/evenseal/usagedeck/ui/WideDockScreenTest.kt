@@ -9,8 +9,10 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
@@ -26,6 +28,7 @@ import com.evenseal.usagedeck.ui.components.NoLimit
 import com.evenseal.usagedeck.ui.components.SETTINGS_CHIP
 import com.evenseal.usagedeck.ui.theme.DeckTheme
 import com.evenseal.usagedeck.ui.widedock.ACCOUNT_PAGER
+import com.evenseal.usagedeck.ui.widedock.RING_TAG
 import com.evenseal.usagedeck.ui.widedock.WideDockScreen
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Assert.assertEquals
@@ -62,13 +65,31 @@ class WideDockScreenTest {
     }
 
     @Test
-    fun aPlanWithNoFiveHourWindowSaysSoInTheBigRing() {
+    fun aPlanWithNoFiveHourWindowSwapsTheRingSizes() {
         val adam = Fx.machine("m1", "Adam", "adam@example.com", fiveHour = 0, sevenDay = 6)
         val weeklyOnly = adam.copy(limits = adam.limits.filter { it.id != "session" })
         showLandscape(fakeViewModel(team = TeamState(listOf(weeklyOnly))))
         compose.onNodeWithText(NoLimit.SHORT).assertIsDisplayed()
         compose.onNodeWithText(NoLimit.RING_CAPTION).assertIsDisplayed()
         compose.onNodeWithText("6").assertIsDisplayed()
+        // The week is the headline now: its ring is the big one, still on the right.
+        val none = compose.onNodeWithTag(RING_TAG + "session").fetchSemanticsNode().boundsInRoot
+        val week = compose.onNodeWithTag(RING_TAG + "weekly_all").fetchSemanticsNode().boundsInRoot
+        assertTrue(week.width > none.width)
+        assertTrue(none.left < week.left)
+        // Rings, not ovals: a wide caption must not squeeze either one.
+        assertEquals(none.height, none.width, 1f)
+        assertEquals(week.height, week.width, 1f)
+    }
+
+    @Test
+    fun theFiveHourRingIsTheBigOneWhenThePlanHasIt() {
+        showLandscape(fakeViewModel())
+        val five = compose.onAllNodesWithTag(RING_TAG + "session")[0].fetchSemanticsNode().boundsInRoot
+        val week = compose.onAllNodesWithTag(RING_TAG + "weekly_all")[0].fetchSemanticsNode().boundsInRoot
+        assertTrue(five.width > week.width)
+        assertEquals(five.height, five.width, 1f)
+        assertEquals(week.height, week.width, 1f)
     }
 
     @Test
