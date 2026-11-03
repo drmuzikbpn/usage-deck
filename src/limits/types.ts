@@ -96,6 +96,11 @@ export interface LimitsSnapshot extends NormalizedLimits {
   fetchedAt: string | null;
   stale: boolean;
   error: LimitsErrorInfo | null;
+  /**
+   * §23.68: Anthropic reports a week but no 5-hour window — the plan has none. Clients say so
+   * rather than leave the `session` row's absence to look like missing data.
+   */
+  noSessionLimit?: boolean;
   raw: unknown;
 }
 
@@ -110,6 +115,7 @@ export function stripRaw(snapshot: LimitsSnapshot): LimitsSnapshotLite {
     limits: snapshot.limits,
     legacyWindows: snapshot.legacyWindows,
     extraUsage: snapshot.extraUsage,
+    noSessionLimit: snapshot.noSessionLimit === true,
   };
 }
 

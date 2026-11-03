@@ -202,7 +202,11 @@ export function renderMenubar(state: MenubarState, now: number, plugin: string |
     const summary = state.summary;
     for (const id of HEADLINE_IDS) {
       const limit = summary?.limits.limits.find((l) => l.id === id);
-      if (limit === undefined) continue;
+      if (limit === undefined) {
+        // §23.68: a plan with no 5-hour window says so, so its absence does not read as a fault.
+        if (id === 'session' && summary?.limits.noSessionLimit === true) menu.push(info('5h: no limit on this plan'));
+        continue;
+      }
       if (limit.percent === null) unknown = true;
       parts.push(`${SHORT_LABELS[id] ?? id} ${limit.percent === null ? '—' : `${limit.percent}%`}`);
       menu.push(limitRow(limit, limitLabel(limit), summary?.status.byId[id], plugin, now));

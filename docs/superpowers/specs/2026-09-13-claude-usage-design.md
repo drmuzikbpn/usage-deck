@@ -2062,3 +2062,28 @@ A scoped limit on a different schedule can go unknown when `weekly_all` resets n
 upstream is failing: unknown is honest, and the next successful poll restores it.
 
 **Tests:** `test/limits-observed.test.ts`.
+
+### §23.68 A plan with no 5-hour window says so (2026-11-03)
+
+Anthropic dropped the rolling 5-hour limit for verified accounts on its top plan. From then on
+the statusline's `rate_limits` carried `seven_day` alone, the usage endpoint had no `session`
+row and `five_hour` was `null`, and Claude Code's own `/usage` showed only the weekly bar. The
+daemon dropped the `session` row, as it should with no input, but every client then showed the
+weekly figure alone and the missing row read like a fault (issue #102).
+
+- **The body says so.** `/v1/limits` (and the `limits` inside `/v1/summary`) carries
+  `noSessionLimit: true` when it has a `weekly_all` row and no `session` row. It is derived
+  from the rows served, so it can never disagree with them.
+- **A newer statusline post overrides upstream.** A statusline post with a week but no
+  5-hour window, fresh (`OBSERVATION_TTL_MS`) and no older than `fetchedAt`, removes upstream's
+  `session` row and its `five_hour` legacy entry. Its lapse is scheduled like any observation's,
+  so push clients hear when upstream's row returns. A fresh `session` observation still wins.
+  An idle session from before the change can post its old 5-hour reading until that reading
+  lapses. That is §23.40's existing behaviour, and it ends within one window.
+- **A newer successful poll that has the window again restores the row.** A plan that gets its
+  5-hour limit back, such as a new or unverified account, needs no special case.
+- **Clients:** the menu bar adds `5h: no limit on this plan` to the dropdown and leaves it out
+  of the title. The MCP headline leads with `session none on this plan`. The status line and
+  hook nudge stay silent, as they already were with no row.
+
+**Tests:** `test/limits-observed.test.ts`, `test/menubar.test.ts`, `test/mcp.test.ts`.

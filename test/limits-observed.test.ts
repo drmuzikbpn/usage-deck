@@ -536,6 +536,92 @@ describe('LimitsPoller.observe (§23.36)', () => {
   });
 });
 
+// --- a plan with no 5-hour window (§23.68) -----------------------------------
+
+function weeklyOnly(sevenDay: number) {
+  return { seven_day: { used_percentage: sevenDay, resets_at: secs(EPOCH + 5 * 86_400_000) } };
+}
+
+/** The live fixture as Anthropic sends it for a plan with no 5-hour window. */
+function upstreamWithoutSession() {
+  const body = upstreamResettingAt(EPOCH + 3 * 3_600_000);
+  const limits = (body['limits'] as Array<Record<string, unknown>>).filter((l) => l['kind'] !== 'session');
+  return { ...body, five_hour: null, limits };
+}
+
+describe('a plan with no 5-hour window (§23.68)', () => {
+  it('says so when the statusline reports a week and no 5-hour window', () => {
+    const h = harness({ upstream: false });
+    expect(h.poller.observe(weeklyOnly(6)).accepted).toBe(true);
+    const snap = h.poller.snapshot();
+    expect(snap.limits.find((l) => l.id === 'session')).toBeUndefined();
+    expect(snap.noSessionLimit).toBe(true);
+  });
+
+  it('does not say so while a 5-hour window is reported', () => {
+    const h = harness({ upstream: false });
+    h.poller.observe(rateLimits(10, 6));
+    expect(h.poller.snapshot().noSessionLimit).toBe(false);
+  });
+
+  it('does not say so before anything is known', () => {
+    expect(harness({ upstream: false }).poller.snapshot().noSessionLimit).toBe(false);
+  });
+
+  it('says so from upstream alone when its body has no session window', async () => {
+    const h = harness({ upstreamBody: upstreamWithoutSession });
+    h.poller.start();
+    await flush();
+    h.poller.stop();
+    const snap = h.poller.snapshot();
+    expect(snap.limits.find((l) => l.id === 'weekly_all')).toBeDefined();
+    expect(snap.limits.find((l) => l.id === 'session')).toBeUndefined();
+    expect(snap.noSessionLimit).toBe(true);
+  });
+
+  it('drops an older upstream session row once the statusline stops reporting the window', async () => {
+    const h = harness({ upstreamBody: () => upstreamResettingAt(EPOCH + 3 * 3_600_000) });
+    h.poller.start();
+    await flush();
+    h.poller.stop();
+    expect(byId(h.poller, 'session')).toBeDefined();
+    await h.timers.advance(60_000);
+    h.poller.observe(weeklyOnly(6));
+    expect(byId(h.poller, 'session')).toBeUndefined();
+    expect(h.poller.snapshot().noSessionLimit).toBe(true);
+    expect(h.poller.snapshot().legacyWindows['five_hour']).toBeUndefined();
+  });
+
+  it('keeps the upstream session row once that statusline reading has lapsed', async () => {
+    const h = harness({ upstreamBody: () => upstreamResettingAt(EPOCH + 3 * 3_600_000) });
+    h.poller.start();
+    await flush();
+    h.poller.stop();
+    await h.timers.advance(60_000);
+    h.poller.observe(weeklyOnly(6));
+    await h.timers.advance(OBSERVATION_TTL_MS);
+    expect(byId(h.poller, 'session')).toBeDefined();
+    expect(h.poller.snapshot().noSessionLimit).toBe(false);
+  });
+
+  it('a newer upstream poll that has the window again brings the row back', async () => {
+    let withSession = false;
+    const h = harness({
+      upstreamBody: () => (withSession ? upstreamResettingAt(EPOCH + 3 * 3_600_000) : upstreamWithoutSession()),
+    });
+    h.poller.start();
+    await flush();
+    h.poller.observe(weeklyOnly(6));
+    expect(h.poller.snapshot().noSessionLimit).toBe(true);
+    withSession = true;
+    await h.timers.advance(60_000);
+    await h.poller.refresh();
+    h.poller.stop();
+    expect(byId(h.poller, 'session')).toBeDefined();
+    expect(h.poller.snapshot().noSessionLimit).toBe(false);
+  });
+});
+
 // --- the HTTP route ---------------------------------------------------------
 
 const servers: UsageServer[] = [];

@@ -88,6 +88,24 @@ describe('renderMenubar', () => {
     expect(text).not.toContain('Start daemon');
   });
 
+  it('says the plan has no 5-hour window instead of leaving it out (§23.68)', () => {
+    const body = summary([limit('weekly_all', 6)]);
+    const text = renderMenubar(
+      { running: true, version: '1', summary: { ...body, limits: { ...body.limits, noSessionLimit: true } } },
+      NOW,
+      PLUGIN,
+    );
+    expect(text.split('\n')[0]).toBe('🟢 7d 6%');
+    expect(text).toContain('5h: no limit on this plan | refresh=true');
+    const lines = text.split('\n');
+    expect(lines.findIndex((l) => l.startsWith('5h: no limit'))).toBeLessThan(lines.findIndex((l) => l.includes('7d: 6%')));
+  });
+
+  it('says nothing about the 5-hour window while it is merely unknown', () => {
+    const text = renderMenubar({ running: true, version: '1', summary: summary([limit('weekly_all', 6)]) }, NOW, PLUGIN);
+    expect(text).not.toContain('no limit on this plan');
+  });
+
   it('marks the overall status with a dot, never by colouring the title text', () => {
     const text = renderMenubar({ running: true, version: '1', summary: summary([limit('session', 97)], 'critical') }, NOW, PLUGIN);
     expect(text.split('\n')[0]).toBe('🔴 5h 97%');

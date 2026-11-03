@@ -408,6 +408,11 @@ export class LimitsPoller {
   private readonly configDir: string | null;
   private readonly listeners = new Set<() => void>();
   private lastSignature: string = snapshotSignature(emptySnapshot());
+  /**
+   * §23.68: when Claude Code last posted a week with no 5-hour window — a plan that has
+   * none. `null` until one does.
+   */
+  private weeklyOnlySeenAt: number | null = null;
 
   constructor(opts: PollerOptions) {
     this.getToken = opts.getToken;
@@ -467,7 +472,15 @@ export class LimitsPoller {
     }
     for (const w of OBSERVED_WINDOWS) {
       const obs = this.observed.get(w.id);
-      if (obs === undefined || !this.isFresh(obs, now) || obs.observedAt < fetchedAtMs) continue;
+      if (obs === undefined || !this.isFresh(obs, now) || obs.observedAt < fetchedAtMs) {
+        if (w.id === 'session' && this.weeklyOnlyIsNewest(fetchedAtMs, now)) {
+          // §23.68: Claude Code has since said the plan has no 5-hour window; upstream's row is older news.
+          const at = limits.findIndex((l) => l.id === w.id);
+          if (at >= 0) limits.splice(at, 1);
+          delete legacyWindows[w.key];
+        }
+        continue;
+      }
       const at = limits.findIndex((l) => l.id === w.id);
       const base: NormalizedLimit =
         at >= 0
@@ -492,7 +505,15 @@ export class LimitsPoller {
     // and not "fresh" because one other headline row happens to be live.
     const headline = limits.filter((l) => OBSERVED_WINDOWS.some((w) => w.id === l.id));
     const stale = headline.length > 0 ? headline.some((l) => l.stale === true) : this.current.stale;
-    return { ...this.current, limits, legacyWindows, stale };
+    // §23.68: a week but no 5-hour window is a plan without one, not a gap in the data.
+    const noSessionLimit = !limits.some((l) => l.id === 'session') && limits.some((l) => l.id === 'weekly_all');
+    return { ...this.current, limits, legacyWindows, stale, noSessionLimit };
+  }
+
+  /** §23.68: a fresh weekly-only statusline post, newer than upstream's last word. */
+  private weeklyOnlyIsNewest(fetchedAtMs: number, now: number): boolean {
+    const at = this.weeklyOnlySeenAt;
+    return at !== null && at >= fetchedAtMs && now - at < OBSERVATION_TTL_MS;
   }
 
   /**
@@ -533,6 +554,7 @@ export class LimitsPoller {
     }
     if (parsed.length === 0) return { accepted: false, reason: 'rate_limits has no five_hour or seven_day window' };
     const observedAt = this.now();
+    if (!parsed.some(([id]) => id === 'session')) this.weeklyOnlySeenAt = observedAt;
     const sessionId = isSessionId(rec['session_id']) ? rec['session_id'] : null;
     const own = sessionId === null ? undefined : this.sessionReadings.get(sessionId)?.byId;
     const readings: Array<[string, SessionReading]> = [];
@@ -616,6 +638,8 @@ export class LimitsPoller {
       if (!this.isFresh(obs, now)) continue;
       lapsesAt = Math.min(lapsesAt, obs.observedAt + OBSERVATION_TTL_MS, obs.resetsAtMs ?? Number.POSITIVE_INFINITY);
     }
+    const weeklyOnly = this.weeklyOnlySeenAt;
+    if (weeklyOnly !== null && now - weeklyOnly < OBSERVATION_TTL_MS) lapsesAt = Math.min(lapsesAt, weeklyOnly + OBSERVATION_TTL_MS);
     if (lapsesAt === Number.POSITIVE_INFINITY) return;
     this.expiryHandle = this.timers.setTimeout(() => {
       this.expiryHandle = null;

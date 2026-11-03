@@ -154,6 +154,25 @@ describe('get_limits', () => {
     );
   });
 
+  it('says the plan has no 5-hour window instead of leaving it out (§23.68)', async () => {
+    const d = await daemon();
+    d.limits.set({
+      fetchedAt: null,
+      stale: false,
+      error: null,
+      limits: [
+        { id: 'weekly_all', kind: 'weekly_all', group: 'weekly', percent: 6, severity: null, resetsAt: null, scope: null, isActive: false, source: 'statusline', asOf: '2026-09-26T08:24:10.000Z' },
+      ],
+      legacyWindows: {},
+      extraUsage: null,
+      noSessionLimit: true,
+      raw: null,
+    });
+    const result = await mcpFor(d).callTool('get_limits');
+    expect(headline(result)).toBe('session none on this plan · weekly 6% · live from Claude Code as of 2026-09-26 08:24 UTC');
+    expect(body(result)['noSessionLimit']).toBe(true);
+  });
+
   it('statusline-only data: says where the numbers came from and when, and not stale (§23.36)', async () => {
     const d = await daemon();
     d.limits.set({
