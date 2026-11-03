@@ -28,7 +28,8 @@ import java.time.ZoneId
 /**
  * One utilisation window as a single row, the way the Ledger mockup draws it:
  * `5h | ████░░░░ | 42% | 2h33 left`. A null [limit] means the daemon has not reported that window
- * yet and renders as `—`.
+ * yet and renders as `—`, unless [noLimit] says the plan has no such window at all (daemon
+ * §23.68): then it reads `none · on this plan`.
  */
 @Composable
 fun LimitBar(
@@ -37,8 +38,10 @@ fun LimitBar(
     now: Instant,
     use24h: Boolean = true,
     modifier: Modifier = Modifier,
-    zone: ZoneId = ZoneId.systemDefault()
+    zone: ZoneId = ZoneId.systemDefault(),
+    noLimit: Boolean = false
 ) {
+    val none = noLimit && limit == null
     val percent = limit?.percent?.coerceIn(0, 100)
     val color = limit?.let { DeckColors.of(it.status) } ?: DeckColors.dim
 
@@ -72,18 +75,23 @@ fun LimitBar(
             }
         }
         Text(
-            text = percent?.let { "$it%" } ?: EMPTY,
+            text = percent?.let { "$it%" } ?: if (none) NoLimit.SHORT else EMPTY,
             color = color,
             fontFamily = DeckType.numeral,
-            fontSize = 18.sp,
+            fontSize = if (none) 13.sp else 18.sp,
             textAlign = TextAlign.End,
             modifier = Modifier.width(PERCENT_WIDTH)
         )
         Text(
-            text = if (limit == null) EMPTY else Format.resetsShort(limit.resetsAt, now, zone, use24h),
+            text = when {
+                limit != null -> Format.resetsShort(limit.resetsAt, now, zone, use24h)
+                none -> NoLimit.CAPTION
+                else -> EMPTY
+            },
             color = DeckColors.muted,
             fontFamily = DeckType.mono,
-            fontSize = 10.sp,
+            // "on this plan" is a hair wider than the column at 10 sp.
+            fontSize = if (none) 9.sp else 10.sp,
             textAlign = TextAlign.End,
             maxLines = 1,
             modifier = Modifier.width(RESET_WIDTH)
@@ -95,3 +103,10 @@ private val LABEL_WIDTH = 28.dp
 private val PERCENT_WIDTH = 44.dp
 private val RESET_WIDTH = 76.dp
 private const val EMPTY = "—"
+
+/** Daemon §23.68: how a window the plan does not have reads, as opposed to `—` (not reported yet). */
+object NoLimit {
+    const val SHORT = "none"
+    const val CAPTION = "on this plan"
+    const val RING_CAPTION = "no 5h limit"
+}

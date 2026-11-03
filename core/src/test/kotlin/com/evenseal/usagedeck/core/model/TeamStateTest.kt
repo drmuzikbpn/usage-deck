@@ -102,6 +102,23 @@ class TeamStateTest {
     }
 
     @Test
+    fun `a week with no 5-hour window is a plan without one (daemon 23_68)`() {
+        val weeklyOnly = machine("m1", adam, limits = listOf(limit("weekly_all", 6)), limitsFetchedAt = t0)
+        val user = TeamState(listOf(weeklyOnly)).users.single()
+        assertNull(user.fiveHour)
+        assertTrue(user.noFiveHourLimit)
+    }
+
+    @Test
+    fun `no limits at all is unknown, not a plan without a 5-hour window`() {
+        val user = TeamState(listOf(machine("m1", adam))).users.single()
+        assertFalse(user.noFiveHourLimit)
+        val both =
+            machine("m1", adam, limits = listOf(limit("session", 3), limit("weekly_all", 6)), limitsFetchedAt = t0)
+        assertFalse(TeamState(listOf(both)).users.single().noFiveHourLimit)
+    }
+
+    @Test
     fun `a gone machine never supplies an account's limits even if some arrive`() {
         // A reply without the heartbeat that proves it is not a check-in.
         val quiet = machine("m1", adam).aged(t0.plusSeconds(86_400)).copy(

@@ -22,6 +22,7 @@ import com.evenseal.usagedeck.core.model.PauseMode
 import com.evenseal.usagedeck.core.model.PauseRule
 import com.evenseal.usagedeck.core.model.TeamState
 import com.evenseal.usagedeck.core.model.User
+import com.evenseal.usagedeck.ui.components.NoLimit
 import com.evenseal.usagedeck.ui.components.SETTINGS_CHIP
 import com.evenseal.usagedeck.ui.theme.DeckTheme
 import com.evenseal.usagedeck.ui.widedock.ACCOUNT_PAGER
@@ -58,6 +59,16 @@ class WideDockScreenTest {
         compose.onNodeWithContentDescription(ACCOUNT_PAGER).performTouchInput { swipeLeft() }
         compose.waitForIdle()
         compose.onNodeWithText("77").assertIsDisplayed()
+    }
+
+    @Test
+    fun aPlanWithNoFiveHourWindowSaysSoInTheBigRing() {
+        val adam = Fx.machine("m1", "Adam", "adam@example.com", fiveHour = 0, sevenDay = 6)
+        val weeklyOnly = adam.copy(limits = adam.limits.filter { it.id != "session" })
+        showLandscape(fakeViewModel(team = TeamState(listOf(weeklyOnly))))
+        compose.onNodeWithText(NoLimit.SHORT).assertIsDisplayed()
+        compose.onNodeWithText(NoLimit.RING_CAPTION).assertIsDisplayed()
+        compose.onNodeWithText("6").assertIsDisplayed()
     }
 
     @Test
