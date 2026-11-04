@@ -32,9 +32,11 @@ struct AccountPage: View {
                 GeometryReader { proxy in
                     let sizes = RingSize.fitting(proxy.size, showsText: !isLuminanceReduced)
                     // Bottom-aligned like the phone's rail: both windows end on the same line.
+                    // §23.68: with no 5-hour window the week takes the big ring; places stay put.
+                    let swap = account.noFiveHourLimit
                     HStack(alignment: .bottom, spacing: RingSize.gap) {
-                        window(account.fiveHour, label: "5 h", size: sizes.big, now: now)
-                        window(account.sevenDay, label: "7 d", size: sizes.small, now: now)
+                        window(account.fiveHour, label: "5 h", size: swap ? sizes.small : sizes.big, now: now, noLimit: swap)
+                        window(account.sevenDay, label: "7 d", size: swap ? sizes.big : sizes.small, now: now)
                     }
                     .frame(width: proxy.size.width, height: proxy.size.height)
                 }
@@ -96,24 +98,39 @@ struct AccountPage: View {
         }
     }
 
-    private func window(_ headline: WatchSnapshot.Headline?, label: String, size: RingSize, now: Date) -> some View {
-        VStack(spacing: 2) {
-            RingGauge(ring: RingFace(headline), lineWidth: size.line, numeralSize: size.numeral, lively: !isLuminanceReduced)
-                .frame(width: size.diameter, height: size.diameter)
+    private func window(
+        _ headline: WatchSnapshot.Headline?,
+        label: String,
+        size: RingSize,
+        now: Date,
+        noLimit: Bool = false
+    ) -> some View {
+        let none = noLimit && headline == nil
+        return VStack(spacing: 2) {
+            // "none" is four letters, so it runs smaller than a percent in the same ring.
+            RingGauge(
+                ring: none ? .noLimit : RingFace(headline),
+                lineWidth: size.line,
+                numeralSize: none ? size.numeral * 0.55 : size.numeral,
+                lively: !isLuminanceReduced
+            )
+            .frame(width: size.diameter, height: size.diameter)
             if !isLuminanceReduced {
-                Text(verbatim: "\(label) · \(Format.resetCountdown(headline?.resetsAt, now: now))")
+                Text(verbatim: none ? NoLimit.ringCaption : "\(label) · \(Format.resetCountdown(headline?.resetsAt, now: now))")
                     .font(Theme.data(12))
                     .foregroundStyle(Theme.text)
                     .lineLimit(1)
                     .fixedSize()
-                Text(Format.resetAt(headline?.resetsAt, now: now, use24h: snapshot.use24h))
+                Text(verbatim: none ? NoLimit.caption : Format.resetAt(headline?.resetsAt, now: now, use24h: snapshot.use24h))
                     .font(Theme.data(11))
                     .foregroundStyle(Theme.muted)
                     .lineLimit(1)
                     .fixedSize()
             }
         }
+        // Exactly the ring's width, so a wider caption never pushes the other ring.
+        .frame(width: size.diameter)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(Text(verbatim: "\(label) window"))
+        .accessibilityLabel(Text(verbatim: none ? "\(label) window, no limit on this plan" : "\(label) window"))
     }
 }

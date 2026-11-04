@@ -80,16 +80,19 @@ private struct CircularGlance: View {
     let face: GlanceFace
 
     var body: some View {
-        Gauge(value: face.fiveHour.fraction) {
-            Text(face.isHighest ? face.initial : "5h")
+        // §23.68: with no 5-hour window the one gauge shows the week instead.
+        Gauge(value: face.headline.fraction) {
+            Text(verbatim: face.isHighest ? face.initial : face.headlineTitle)
         } currentValueLabel: {
-            Text(face.fiveHour.label)
+            Text(face.headline.label)
                 .font(Theme.numeral(20))
         }
         .gaugeStyle(.accessoryCircular)
-        .tint(Theme.color(face.fiveHour.status))
+        .tint(Theme.color(face.headline.status))
         .opacity(face.faded ? Theme.staleFade : 1)
-        .accessibilityLabel(Text(verbatim: "\(face.name), five hour window \(face.fiveHour.label) percent"))
+        .accessibilityLabel(
+            Text(verbatim: "\(face.name), \(face.noFiveHour ? "seven day" : "five hour") window \(face.headline.label) percent")
+        )
     }
 }
 
@@ -104,7 +107,7 @@ private struct RectangularGlance: View {
                     .widgetAccentable()
                     .lineLimit(1)
                 Spacer(minLength: 0)
-                Text(face.age ?? face.fiveHourCountdown)
+                Text(face.age ?? face.headlineCountdown)
                     .font(Theme.data(13))
                     .foregroundStyle(face.age == nil ? Theme.text : Theme.warn)
             }
@@ -144,7 +147,7 @@ private struct WindowBar: View {
                 .frame(minWidth: 24, alignment: .trailing)
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text(verbatim: "\(title) \(ring.label) percent"))
+        .accessibilityLabel(Text(verbatim: ring == .noLimit ? "\(title) no limit" : "\(title) \(ring.label) percent"))
     }
 }
 
@@ -152,7 +155,11 @@ private struct InlineGlance: View {
     let face: GlanceFace
 
     var body: some View {
-        Text(verbatim: "\(face.label) \(face.fiveHour.label)% · 7d \(face.sevenDay.label)% · \(face.age ?? face.fiveHourCountdown)")
+        if face.noFiveHour {
+            Text(verbatim: "\(face.label) 7d \(face.sevenDay.label)% · \(face.age ?? face.sevenDayCountdown)")
+        } else {
+            Text(verbatim: "\(face.label) \(face.fiveHour.label)% · 7d \(face.sevenDay.label)% · \(face.age ?? face.fiveHourCountdown)")
+        }
     }
 }
 
@@ -161,42 +168,49 @@ private struct InlineGlance: View {
         let face: GlanceFace
 
         var body: some View {
-            Text(face.fiveHour.label)
+            Text(face.headline.label)
                 .font(Theme.numeral(22))
-                .foregroundStyle(Theme.color(face.fiveHour.status))
+                .foregroundStyle(Theme.color(face.headline.status))
                 .widgetCurvesContent()
                 .widgetLabel {
-                    Gauge(value: face.fiveHour.fraction) {
-                        Text("5h")
+                    Gauge(value: face.headline.fraction) {
+                        Text(verbatim: face.headlineTitle)
                     } currentValueLabel: {
-                        Text(face.fiveHour.label)
+                        Text(face.headline.label)
                     } minimumValueLabel: {
                         Text(face.isHighest ? face.initial : "")
                     } maximumValueLabel: {
-                        Text(face.fiveHourCountdown)
+                        Text(face.headlineCountdown)
                     }
-                    .tint(Theme.color(face.fiveHour.status))
+                    .tint(Theme.color(face.headline.status))
                 }
                 .opacity(face.faded ? Theme.staleFade : 1)
         }
     }
 #endif
 
-/// Small: the 5 h window as the deck's big ring, the 7 d window as a line under it.
+/// Small: the 5 h window as the deck's big ring, the 7 d window as a line under it — or, with no
+/// 5-hour window on the plan (§23.68), the week in the ring and "5h none" on the line.
 private struct SmallGlance: View {
     let face: GlanceFace
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             GlanceHeader(face: face)
-            RingGauge(ring: face.fiveHour, lineWidth: 8, numeralSize: 34)
+            RingGauge(ring: face.headline, lineWidth: 8, numeralSize: 34)
                 .frame(maxWidth: .infinity)
                 .opacity(face.faded ? Theme.staleFade : 1)
             HStack {
-                Text(verbatim: "5h \(face.fiveHourCountdown)")
+                // §23.68: with no 5-hour window the ring is the week and this line says so.
+                Text(verbatim: "\(face.headlineTitle) \(face.headlineCountdown)")
                 Spacer(minLength: 2)
-                Text(verbatim: "7d \(face.sevenDay.label)")
-                    .foregroundStyle(Theme.color(face.sevenDay.status))
+                if face.noFiveHour {
+                    Text(verbatim: "5h \(NoLimit.short)")
+                        .foregroundStyle(Theme.muted)
+                } else {
+                    Text(verbatim: "7d \(face.sevenDay.label)")
+                        .foregroundStyle(Theme.color(face.sevenDay.status))
+                }
             }
             .font(Theme.data(12))
             .foregroundStyle(Theme.text)
@@ -231,6 +245,9 @@ private struct SmallGlance: View {
                     Text(countdown)
                         .font(Theme.numeral(20))
                         .foregroundStyle(Theme.text)
+                        // "no 5h limit" (§23.68) is wider than any countdown.
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
                     Text(resetAt)
                         .font(Theme.data(11))
                         .foregroundStyle(Theme.muted)

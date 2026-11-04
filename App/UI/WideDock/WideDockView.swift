@@ -220,9 +220,24 @@ private struct RailUser: View {
                 .lineLimit(1)
             // Sized to the rail's width so the 7 d ring never clips: big + gap + 0.6 × big.
             let big = min(118, (DeckMetrics.railWidth - 24 - 12) / 1.6)
+            // §23.68: with no 5-hour window the week is the headline, so the rings swap sizes but
+            // keep their places — 5 h still on the left.
+            let swap = user.noFiveHourLimit
+            let small = big * 0.6
             HStack(alignment: .bottom, spacing: 10) {
-                RingNumber(store: store, limit: user.fiveHour, size: big * 0.5, ring: big)
-                RingNumber(store: store, limit: user.sevenDay, size: big * 0.6 * 0.42, ring: big * 0.6)
+                RingNumber(
+                    store: store,
+                    limit: user.fiveHour,
+                    size: swap ? small * 0.3 : big * 0.5,
+                    ring: swap ? small : big,
+                    noLimit: swap
+                )
+                RingNumber(
+                    store: store,
+                    limit: user.sevenDay,
+                    size: swap ? big * 0.5 : small * 0.42,
+                    ring: swap ? big : small
+                )
             }
             if user.health != .fresh {
                 Text(verbatim: "updated \(Format.age(user.limitsFetchedAt, now: store.now))")
@@ -242,21 +257,27 @@ private struct RingNumber: View {
     var limit: Limit?
     var size: CGFloat
     var ring: CGFloat
+    /// Daemon §23.68: the plan has no such window.
+    var noLimit = false
 
     var body: some View {
-        let countdown = Format.resetCountdown(limit?.resetsAt, now: store.now)
+        let none = noLimit && limit == nil
+        let countdown = none ? NoLimit.ringCaption : Format.resetCountdown(limit?.resetsAt, now: store.now)
         VStack(spacing: 4) {
-            RingGauge(ring: RingFace(limit: limit), lineWidth: max(5, ring * 0.06), numeralSize: size, lively: true)
+            RingGauge(ring: none ? .noLimit : RingFace(limit: limit), lineWidth: max(5, ring * 0.06), numeralSize: size, lively: true)
                 .frame(width: ring, height: ring)
-            Text(countdown)
+            Text(verbatim: countdown)
                 .font(DeckFont.mono(11))
                 .foregroundStyle(DeckColor.muted)
                 .fixedSize()
                 .rolling(countdown)
-            Text(Format.resetAt(limit?.resetsAt, now: store.now, use24h: store.settings.use24h))
+            Text(verbatim: none ? NoLimit.caption : Format.resetAt(limit?.resetsAt, now: store.now, use24h: store.settings.use24h))
                 .font(DeckFont.mono(10))
                 .foregroundStyle(DeckColor.dim)
                 .fixedSize()
         }
+        // Exactly the ring's width: a wider caption overflows centred instead of widening the
+        // column and pushing the other ring (the deck's oval bug).
+        .frame(width: ring)
     }
 }

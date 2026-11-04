@@ -208,12 +208,18 @@ struct UserBlock: View {
                             .foregroundStyle(DeckColor.dim)
                             .lineLimit(1)
                     }
-                    glance("5h", user.fiveHour)
+                    glance("5h", user.fiveHour, noLimit: user.noFiveHourLimit)
                     glance("7d", user.sevenDay)
                 }
             }
             if open {
-                LimitBar(label: "5h", limit: user.fiveHour, now: store.now, use24h: store.settings.use24h)
+                LimitBar(
+                    label: "5h",
+                    limit: user.fiveHour,
+                    now: store.now,
+                    use24h: store.settings.use24h,
+                    noLimit: user.noFiveHourLimit
+                )
                 LimitBar(label: "7d", limit: user.sevenDay, now: store.now, use24h: store.settings.use24h)
                 if !user.scoped.isEmpty {
                     HStack(spacing: 6) {
@@ -246,15 +252,17 @@ struct UserBlock: View {
     }
 
     /// `5h ◔ 42%`: a little ring of the same percent ahead of the figure.
-    private func glance(_ label: String, _ limit: Limit?) -> some View {
-        HStack(spacing: 4) {
+    private func glance(_ label: String, _ limit: Limit?, noLimit: Bool = false) -> some View {
+        // §23.68: a window the plan does not have says "none", not the `—` of one not read yet.
+        let none = noLimit && limit == nil
+        return HStack(spacing: 4) {
             Text(label)
                 .font(DeckFont.mono(11))
                 .foregroundStyle(DeckColor.muted)
-            RingGauge(ring: RingFace(limit: limit), lineWidth: 3, showsLabel: false, lively: true)
+            RingGauge(ring: none ? .noLimit : RingFace(limit: limit), lineWidth: 3, showsLabel: false, lively: true)
                 .frame(width: 18, height: 18)
-            Text(verbatim: limit.map { "\($0.percent)%" } ?? "—")
-                .font(DeckFont.numeral(16, .medium))
+            Text(verbatim: limit.map { "\($0.percent)%" } ?? (none ? NoLimit.short : "—"))
+                .font(DeckFont.numeral(none ? 13 : 16, .medium))
                 .foregroundStyle(limit.map { DeckColor.of($0.status) } ?? DeckColor.dim)
                 .lineLimit(1)
                 .frame(width: 40, alignment: .leading)

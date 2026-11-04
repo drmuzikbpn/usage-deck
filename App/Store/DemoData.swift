@@ -23,6 +23,14 @@ enum DemoData {
         launched(with: needsRepairArgument)
     }
 
+    /// Also `-UsageDeckDemoNoFiveHour`: studio's account has no 5-hour window (daemon §23.68),
+    /// for the "none" faces.
+    static let noFiveHourArgument = "-UsageDeckDemoNoFiveHour"
+
+    static var noFiveHour: Bool {
+        launched(with: noFiveHourArgument)
+    }
+
     /// Launch arguments switch the demo on only in Debug: an App Store build has none.
     private static func launched(with argument: String) -> Bool {
         #if DEBUG
@@ -129,6 +137,9 @@ enum DemoData {
                 )
             ),
         ]
+        if noFiveHour {
+            studio.limits.removeAll { $0.id == LimitID.session }
+        }
         return [studio, laptop]
     }
 

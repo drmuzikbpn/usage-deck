@@ -35,6 +35,13 @@ struct WidgetRenderTests {
         Scenario(name: "two-accounts-highest", choice: .highest) { WatchSnapshot.sample(now: $0) },
         Scenario(name: "two-accounts-fixed-home", choice: .account(key: "sample-home/org")) { WatchSnapshot.sample(now: $0) },
         Scenario(name: "stale", choice: .highest) { WatchSnapshot.sample(now: $0.addingTimeInterval(-75)) },
+        // Daemon §23.68: a plan with no 5-hour window leads with the week.
+        Scenario(name: "no-five-hour", choice: .highest) { now in
+            var sample = WatchSnapshot.sample(now: now)
+            sample.accounts = Array(sample.accounts.prefix(1))
+            sample.accounts[0].fiveHour = nil
+            return sample
+        },
         Scenario(name: "no-devices", choice: .highest) { now in
             var sample = WatchSnapshot.sample(now: now)
             sample.devices = []

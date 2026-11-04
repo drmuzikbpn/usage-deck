@@ -67,7 +67,7 @@ struct RingGauge: View {
             withAnimation(.smooth(duration: 0.6)) { swept = new }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text(verbatim: ring.percent.map { "\($0) percent" } ?? "no reading"))
+        .accessibilityLabel(Text(verbatim: ring.percent.map { "\($0) percent" } ?? (ring == .noLimit ? "no limit" : "no reading")))
     }
 
     /// Darker at the start of the arc, full colour at its head, so the ring reads as moving.
