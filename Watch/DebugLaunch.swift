@@ -19,6 +19,12 @@
             if arguments.contains("-noDevices") {
                 sample.devices = []
             }
+            // A plan with no 5-hour window (daemon §23.68), for the "none" faces.
+            if arguments.contains("-noFiveHour") {
+                for index in sample.accounts.indices {
+                    sample.accounts[index].fiveHour = nil
+                }
+            }
             return sample
         }
 

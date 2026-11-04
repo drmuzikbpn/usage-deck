@@ -49,6 +49,11 @@ public struct WatchSnapshot: Codable, Sendable, Equatable {
             Highest.initial(name)
         }
 
+        /// Daemon §23.68: see `UserView.noFiveHourLimit`.
+        public var noFiveHourLimit: Bool {
+            fiveHour == nil && sevenDay != nil
+        }
+
         public var accountKey: String {
             key
         }

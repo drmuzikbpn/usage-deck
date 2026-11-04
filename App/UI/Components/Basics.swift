@@ -61,8 +61,11 @@ struct LimitBar: View {
     var limit: Limit?
     var now: Date
     var use24h: Bool
+    /// Daemon §23.68: the plan has no such window — `none · on this plan`, not `—`.
+    var noLimit = false
 
     var body: some View {
+        let none = noLimit && limit == nil
         let percent = limit.map { min(max($0.percent, 0), 100) }
         let color = limit.map { DeckColor.of($0.status) } ?? DeckColor.dim
         HStack(spacing: 8) {
@@ -83,15 +86,18 @@ struct LimitBar: View {
                 .animation(.smooth(duration: 0.6), value: percent)
             }
             .frame(height: 8)
-            Text(verbatim: percent.map { "\($0)%" } ?? "—")
-                .font(DeckFont.numeral(18, .medium))
+            Text(verbatim: percent.map { "\($0)%" } ?? (none ? NoLimit.short : "—"))
+                .font(DeckFont.numeral(none ? 13 : 18, .medium))
                 .foregroundStyle(color)
                 .frame(width: 44, alignment: .trailing)
                 .rolling(percent)
-            Text(limit == nil ? "—" : Format.resetsShort(limit?.resetsAt, now: now, use24h: use24h))
+            Text(verbatim: limit != nil
+                ? Format.resetsShort(limit?.resetsAt, now: now, use24h: use24h)
+                : none ? NoLimit.caption : "—")
                 .font(DeckFont.mono(10))
                 .foregroundStyle(DeckColor.muted)
                 .lineLimit(1)
+                .minimumScaleFactor(0.8)
                 .frame(width: 76, alignment: .trailing)
         }
         .accessibilityElement(children: .combine)

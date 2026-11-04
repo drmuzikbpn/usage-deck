@@ -8,6 +8,9 @@ See how close your Claude account is to its 5-hour and 7-day limits, how many to
 Code sessions are burning, and pause or freeze sessions — from your iPhone, your lock screen and
 your wrist.
 
+On a plan with no 5-hour limit (Anthropic dropped it for verified accounts on its top plan),
+the 5-hour window reads **none** and the weekly ring takes the lead.
+
 Usage Deck does not talk to Anthropic. It reads everything from
 [`claude-usage`](https://github.com/drmuzikbpn/usage-deck), a small daemon you run on
 the computer where you use Claude Code (macOS or Linux), and talks only to that computer.

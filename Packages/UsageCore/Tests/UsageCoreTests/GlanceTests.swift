@@ -353,3 +353,64 @@ struct SampleSnapshotTests {
         #expect(row.lastTool == "Bash")
     }
 }
+
+/// Daemon §23.68: Anthropic reports a week and no 5-hour window for a plan without one.
+struct NoFiveHourLimitTests {
+    private func user(_ limits: [Limit]) -> UserView {
+        UserView(
+            key: "k", displayName: "Adam", emailAddress: nil, organizationName: nil,
+            deviceIds: [], limits: limits, limitsFetchedAt: t0, health: .fresh
+        )
+    }
+
+    @Test func aWeekWithNoFiveHourWindowIsAPlanWithoutOne() {
+        #expect(user([limit("weekly_all", 6)]).noFiveHourLimit)
+        #expect(!user([limit("session", 3), limit("weekly_all", 6)]).noFiveHourLimit)
+        #expect(!user([]).noFiveHourLimit)
+        #expect(account("a", "Work", five: nil, seven: 6).noFiveHourLimit)
+        #expect(!account("a", "Work", five: 3, seven: 6).noFiveHourLimit)
+        #expect(!account("a", "Work", five: nil, seven: nil).noFiveHourLimit)
+    }
+
+    @Test func theRingSaysNoneRatherThanADash() {
+        let ring = RingFace.noLimit
+        #expect(ring.label == NoLimit.short)
+        #expect(ring.fraction == 0)
+        #expect(ring.status == nil)
+        #expect(ring.percent == nil)
+    }
+
+    @Test func aGlanceLeadsWithTheWeekAndSaysTheFiveHourWindowIsNone() {
+        let face = GlanceFace.make(
+            snapshot: snapshot(accounts: [account("a", "Work", five: nil, seven: 6)]),
+            choice: .highest, now: t0, timeZone: utc
+        )
+        #expect(face.noFiveHour)
+        #expect(face.fiveHour == .noLimit)
+        #expect(face.fiveHourCountdown == NoLimit.ringCaption)
+        #expect(face.fiveHourResetAt == NoLimit.caption)
+        #expect(face.headline == face.sevenDay)
+        #expect(face.headlineTitle == "7d")
+        #expect(face.headlineCountdown == face.sevenDayCountdown)
+    }
+
+    @Test func aGlanceWithAFiveHourWindowStillLeadsWithIt() {
+        let face = GlanceFace.make(
+            snapshot: snapshot(accounts: [account("a", "Work", five: 82, seven: 41)]),
+            choice: .highest, now: t0, timeZone: utc
+        )
+        #expect(!face.noFiveHour)
+        #expect(face.headline == face.fiveHour)
+        #expect(face.headlineTitle == "5h")
+        #expect(face.headlineCountdown == "1h36m")
+    }
+
+    @Test func aWindowNotReadYetIsStillADash() {
+        let face = GlanceFace.make(
+            snapshot: snapshot(accounts: [account("a", "Work", five: nil, seven: nil)]),
+            choice: .highest, now: t0, timeZone: utc
+        )
+        #expect(!face.noFiveHour)
+        #expect(face.fiveHour.label == "—")
+    }
+}

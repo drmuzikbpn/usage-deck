@@ -3,6 +3,13 @@
 
 import Foundation
 
+/// Daemon §23.68: how a window the plan does not have reads, as opposed to `—` (not read yet).
+public enum NoLimit {
+    public static let short = "none"
+    public static let caption = "on this plan"
+    public static let ringCaption = "no 5h limit"
+}
+
 /// One headline drawn as a ring: an arc from twelve o'clock on a faint track, the percent
 /// without its sign in the middle, coloured by status (deck WideDock `RingNumber`). No headline
 /// draws an empty, dim ring labelled `—`.
@@ -20,6 +27,13 @@ public struct RingFace: Sendable, Equatable {
         label = headline.map { String($0.percent) } ?? "—"
         status = headline?.status
     }
+
+    /// A window the plan does not have: an empty, dim ring that says "none".
+    public static let noLimit: RingFace = {
+        var ring = RingFace(nil)
+        ring.label = NoLimit.short
+        return ring
+    }()
 
     /// The same face from a limit window, for the iPhone's own rings.
     public init(limit: Limit?) {
@@ -121,6 +135,9 @@ public struct GlanceFace: Sendable, Equatable {
     /// `16:35`, `Thu 09:00`.
     public var fiveHourResetAt: String
     public var sevenDayResetAt: String
+    /// Daemon §23.68: the plan has no 5-hour window; `fiveHour` is `RingFace.noLimit` and its
+    /// countdown and reset lines say so.
+    public var noFiveHour: Bool = false
     public var health: Health
     /// `4m ago` while stale or dead; nil while fresh.
     public var age: String?
@@ -138,21 +155,39 @@ public struct GlanceFace: Sendable, Equatable {
         guard let account = snapshot.account(for: choice) else { return blank(.noData) }
         let health = snapshot.glanceHealth(of: account, now: now)
         let nearest = max(account.fiveHour?.percent ?? 0, account.sevenDay?.percent ?? 0)
+        let none = account.noFiveHourLimit
         return GlanceFace(
             state: .account,
             name: account.name,
             initial: account.initial,
             isHighest: choice == .highest,
-            fiveHour: RingFace(account.fiveHour),
+            fiveHour: none ? .noLimit : RingFace(account.fiveHour),
             sevenDay: RingFace(account.sevenDay),
-            fiveHourCountdown: countdown(account.fiveHour?.resetsAt, now: now),
+            fiveHourCountdown: none ? NoLimit.ringCaption : countdown(account.fiveHour?.resetsAt, now: now),
             sevenDayCountdown: countdown(account.sevenDay?.resetsAt, now: now),
-            fiveHourResetAt: Format.resetAt(account.fiveHour?.resetsAt, now: now, timeZone: timeZone, use24h: snapshot.use24h),
+            fiveHourResetAt: none
+                ? NoLimit.caption
+                : Format.resetAt(account.fiveHour?.resetsAt, now: now, timeZone: timeZone, use24h: snapshot.use24h),
             sevenDayResetAt: Format.resetAt(account.sevenDay?.resetsAt, now: now, timeZone: timeZone, use24h: snapshot.use24h),
+            noFiveHour: none,
             health: health,
             age: health == .fresh ? nil : Format.age(snapshot.generatedAt, now: now),
             relevance: Double(min(max(nearest, 0), 100)) / 100
         )
+    }
+
+    /// The window a one-gauge face (circular, corner, the small widget's ring) leads with: the
+    /// 5 h window, or the week when the plan has no 5-hour window (§23.68).
+    public var headline: RingFace {
+        noFiveHour ? sevenDay : fiveHour
+    }
+
+    public var headlineTitle: String {
+        noFiveHour ? "7d" : "5h"
+    }
+
+    public var headlineCountdown: String {
+        noFiveHour ? sevenDayCountdown : fiveHourCountdown
     }
 
     private static func blank(_ state: State) -> GlanceFace {

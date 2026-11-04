@@ -46,6 +46,14 @@ public struct UserView: Sendable, Equatable, Identifiable {
         limits.first { $0.id == LimitID.session }
     }
 
+    /// Daemon §23.68: a week but no 5-hour window means the plan has none (Anthropic dropped it
+    /// for verified accounts on its top plan). Drawn as "none", not the `—` of a reading not yet
+    /// in. Derived from `limits[]` exactly as the daemon derives `noSessionLimit`, so it holds for
+    /// older daemons too.
+    public var noFiveHourLimit: Bool {
+        fiveHour == nil && sevenDay != nil
+    }
+
     public var sevenDay: Limit? {
         limits.first { $0.id == LimitID.weeklyAll }
     }
