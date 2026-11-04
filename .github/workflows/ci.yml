@@ -27,7 +27,7 @@ jobs:
           # The action's default list includes the retired `tools` package, which Google's
           # repository stopped serving in September 2026 and sdkmanager then fails outright.
           packages: platform-tools build-tools;34.0.0
-      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
       - name: Public-repository check
         env:
           BASE_REF: ${{ github.base_ref }}
