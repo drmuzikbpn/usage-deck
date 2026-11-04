@@ -3,9 +3,6 @@
 
 import Foundation
 
-/// One headline drawn as a ring: an arc from twelve o'clock on a faint track, the percent
-/// without its sign in the middle, coloured by status (deck WideDock `RingNumber`). No headline
-/// draws an empty, dim ring labelled `—`.
 /// Daemon §23.68: how a window the plan does not have reads, as opposed to `—` (not read yet).
 public enum NoLimit {
     public static let short = "none"
@@ -13,6 +10,9 @@ public enum NoLimit {
     public static let ringCaption = "no 5h limit"
 }
 
+/// One headline drawn as a ring: an arc from twelve o'clock on a faint track, the percent
+/// without its sign in the middle, coloured by status (deck WideDock `RingNumber`). No headline
+/// draws an empty, dim ring labelled `—`.
 public struct RingFace: Sendable, Equatable {
     public var percent: Int?
     /// 0…1, clamped.
