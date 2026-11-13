@@ -16,6 +16,11 @@ import java.time.Instant
  *
  * Samples arrive on the SSE thread while Compose reads rates on the main thread, so every
  * method takes the same lock; a reader works on a snapshot of the key's points.
+ *
+ * Retention applies to every key, not only the one being recorded: at most once per
+ * [SWEEP_INTERVAL] a record also trims the other keys and drops the ones left empty. Without
+ * that, a key nothing records any more (a session whose end event was missed) kept up to
+ * [maxPoints] points for the life of the process, and the kiosk ran out of heap after days.
  */
 class BurnHistory(
     private val retention: Duration = Duration.ofHours(5),
@@ -24,6 +29,7 @@ class BurnHistory(
     data class Point(val at: Instant, val cumulative: Long)
 
     private val points = LinkedHashMap<String, ArrayDeque<Point>>()
+    private var nextSweep: Instant? = null
 
     fun record(key: String, at: Instant, cumulative: Long) = synchronized(points) {
         val deque = points.getOrPut(key) { ArrayDeque() }
@@ -38,6 +44,24 @@ class BurnHistory(
         }
         while (deque.size > maxPoints) {
             deque.removeFirst()
+        }
+        val due = nextSweep
+        // A wall clock set back must not postpone every sweep until it catches up again.
+        if (due == null || !at.isBefore(due) || at.isBefore(due.minus(SWEEP_INTERVAL))) {
+            sweep(cutoff)
+            nextSweep = at.plus(SWEEP_INTERVAL)
+        }
+    }
+
+    /** Callers hold the lock. */
+    private fun sweep(cutoff: Instant) {
+        val keys = points.values.iterator()
+        while (keys.hasNext()) {
+            val deque = keys.next()
+            while (deque.isNotEmpty() && deque.first().at.isBefore(cutoff)) {
+                deque.removeFirst()
+            }
+            if (deque.isEmpty()) keys.remove()
         }
     }
 
@@ -77,10 +101,22 @@ class BurnHistory(
         synchronized(points) { points.remove(key) }
     }
 
+    /** Drops every key starting with [prefix] that is not in [keep]; other keys are untouched. */
+    fun retainOnly(prefix: String, keep: Set<String>) {
+        synchronized(points) { points.keys.removeAll { it.startsWith(prefix) && it !in keep } }
+    }
+
+    /** Whether [key] has any history. For tests and diagnostics. */
+    fun knows(key: String): Boolean = synchronized(points) { key in points }
+
+    /** How many keys hold history. For tests and diagnostics. */
+    fun keyCount(): Int = synchronized(points) { points.size }
+
     private fun snapshot(key: String): List<Point>? = synchronized(points) { points[key]?.toList() }
 
     private companion object {
         const val SECONDS_PER_MINUTE = 60.0
         const val MILLIS_PER_SECOND = 1000.0
+        val SWEEP_INTERVAL: Duration = Duration.ofMinutes(1)
     }
 }

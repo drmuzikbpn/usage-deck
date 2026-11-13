@@ -425,7 +425,14 @@ class MachineClient(
         recordSessionBurn(sessions, clock.now())
     }
 
+    /**
+     * [sessions] is always the machine's full list, so a session missing from it has ended even
+     * when its end event never arrived (the stream was down); its history goes with it. Project
+     * keys stay: an idle project's drill-in still charts the last five hours, and retention
+     * clears them.
+     */
     private fun recordSessionBurn(sessions: List<Session>, now: Instant) {
+        burn.retainOnly(burnKeyForSession(""), sessions.mapTo(HashSet()) { burnKeyForSession(it.sessionId) })
         sessions.forEach { burn.record(burnKeyForSession(it.sessionId), now, it.tokens.total) }
         sessions.groupBy { it.projectKey }.forEach { (key, group) ->
             burn.record(burnKeyForProject(key), now, group.sumOf { it.tokens.total })

@@ -360,6 +360,26 @@ class MachineClientTest {
     }
 
     @Test
+    fun `a session missing from a new snapshot loses its burn history`() = runTest {
+        // An end event sent while the stream was down never arrives; the reconnect snapshot is
+        // the only sign the session is gone.
+        val f = fixture()
+        f.events.emit(Connection.Open)
+        f.events.emit(snapshot(sessions = listOf(sessionDto("s1", 1_000), sessionDto("s2", 20))))
+        runCurrent()
+        assertTrue(f.burn.knows(f.client.burnKeyForSession("s1")))
+
+        f.events.emit(snapshot(sessions = listOf(sessionDto("s2", 40))))
+        runCurrent()
+        assertFalse(f.burn.knows(f.client.burnKeyForSession("s1")))
+        assertTrue(f.burn.knows(f.client.burnKeyForSession("s2")))
+        assertTrue(
+            "a project's chart outlives its sessions",
+            f.burn.knows(f.client.burnKeyForProject(f.client.state.value.sessions.single().projectKey))
+        )
+    }
+
+    @Test
     fun `spend replaces today total`() = runTest {
         val f = fixture()
         f.events.emit(Connection.Open)
