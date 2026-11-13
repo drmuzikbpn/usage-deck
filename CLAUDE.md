@@ -189,6 +189,12 @@ owner", never a person's name; never write a serial number, a real host name or 
 - `BurnHistory` is written on the SSE thread and read by Compose on main; every method locks and
   readers work on a snapshot. Dropping the lock crashes the kiosk with ConcurrentModificationException
   every few minutes on the real phone (it did, four times in half an hour).
+- `BurnHistory` must stay bounded across days of uptime. A record sweeps every key past retention
+  (at most once a minute), and `MachineClient.recordSessionBurn` drops session keys missing from
+  the full session list, so an end event missed while the stream was down cannot pin a key.
+  Before this the kiosk's heap reached 176 of 192 MB after 5 days and the deck froze on stale
+  numbers; force-stop cannot restart a Device Owner app in lock-task mode, so only a reboot
+  cleared it.
 - Daemons before 0.1.66 resume exactly the scope they are given; newer ones
   cascade a project resume and keep one rule per scope. The phone fans a project resume out to the
   session rules under it so both behave; resuming an already-lifted scope is a no-op.

@@ -6,6 +6,7 @@ package com.evenseal.usagedeck.core.model
 import java.time.Duration
 import java.time.Instant
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -81,6 +82,54 @@ class BurnHistoryTest {
         h.record("s", t0.plusSeconds(60), 4000)
         h.forget("s")
         assertEquals(0.0, h.ratePerMinute("s", t0.plusSeconds(60)), 0.0)
+    }
+
+    @Test
+    fun `a key nothing records any more is dropped once its points pass retention`() {
+        // The kiosk runs for days: a session whose end event was missed (stream down, Mac
+        // rebinding) must not keep its points for the life of the process.
+        val h = BurnHistory(retention = Duration.ofMinutes(5))
+        h.record("old", t0, 1)
+        h.record("old", t0.plusSeconds(10), 2)
+        h.record("live", t0.plusSeconds(10), 1)
+        h.record("live", t0.plusSeconds(6 * 60L), 2)
+        assertFalse(h.knows("old"))
+        assertTrue(h.knows("live"))
+    }
+
+    @Test
+    fun `history stays bounded across thousands of short sessions`() {
+        val h = BurnHistory(retention = Duration.ofMinutes(5))
+        repeat(5_000) { i ->
+            val at = t0.plusSeconds(i * 30L)
+            h.record("m/s/$i", at, 1)
+            h.record("m/s/$i", at.plusSeconds(1), 2)
+        }
+        // Five minutes of thirty-second sessions, plus the one sweep interval of slack.
+        assertTrue("keys kept: ${h.keyCount()}", h.keyCount() <= 14)
+    }
+
+    @Test
+    fun `a clock set back does not postpone sweeping`() {
+        val h = BurnHistory(retention = Duration.ofMinutes(5))
+        h.record("future", t0.plus(Duration.ofDays(2)), 1)
+        h.record("old", t0, 1)
+        h.record("live", t0.plusSeconds(6 * 60L), 1)
+        assertFalse(h.knows("old"))
+    }
+
+    @Test
+    fun `retainOnly drops keys under the prefix that are not kept and nothing else`() {
+        val h = BurnHistory()
+        h.record("m/s/a", t0, 1)
+        h.record("m/s/b", t0, 1)
+        h.record("m/p/x", t0, 1)
+        h.record("n/s/c", t0, 1)
+        h.retainOnly("m/s/", setOf("m/s/a"))
+        assertTrue(h.knows("m/s/a"))
+        assertFalse(h.knows("m/s/b"))
+        assertTrue(h.knows("m/p/x"))
+        assertTrue(h.knows("n/s/c"))
     }
 
     @Test
