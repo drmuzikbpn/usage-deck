@@ -2087,3 +2087,21 @@ weekly figure alone and the missing row read like a fault (issue #102).
   hook nudge stay silent, as they already were with no row.
 
 **Tests:** `test/limits-observed.test.ts`, `test/menubar.test.ts`, `test/mcp.test.ts`.
+
+### §23.69 Reading one session does not walk every session (2026-11-21)
+
+On a machine with 39,000 known sessions the daemon stopped answering for about five seconds each
+time a Claude session started, and the menu bar showed `Claude …` when both of its two-second
+reads landed in one. `POST /v1/sessions/register` answers with the session's view; `viewOf`
+built the whole list to find it, and each of the 942 sessions in the list summed its tokens by
+walking all 40,000 aggregates.
+
+- **The spend store keeps a running total per session.** It is derived from the aggregates:
+  `ingest` adds to it, `load` and `prune` rebuild it. It is not in the snapshot, so
+  `SNAPSHOT_VERSION` does not change.
+- **`viewOf` a registered session builds that one view.** A session known only from its
+  transcript still comes from the list.
+- The same index makes `GET /v1/sessions`, the SSE snapshot and the updater's hard-freeze check
+  cheap, since each of them builds the list.
+
+**Tests:** `test/spend/store.test.ts`, `test/sessions/registry.test.ts`.

@@ -41,6 +41,24 @@ async function loadedStore(
   return { store, stateDir, projects };
 }
 
+function sessionEvent(over: Partial<UsageEvent> = {}): UsageEvent {
+  return {
+    dedupKey: 'k',
+    timestamp: '2026-09-13T11:00:00.000Z',
+    day: '2026-09-13',
+    projectKey: PROJECT_A,
+    sessionId: 's',
+    model: 'a-model',
+    cwd: '/home/dev/alpha',
+    topLevel: true,
+    input: 1,
+    output: 1,
+    cacheCreate: 0,
+    cacheRead: 0,
+    ...over,
+  };
+}
+
 describe('parseSince', () => {
   it('accepts `today` as the UTC day boundary', () => {
     expect(parseSince('today', NOW).instant.toISOString()).toBe('2026-09-13T00:00:00.000Z');
@@ -277,6 +295,64 @@ describe('AggregateStore session accessors', () => {
     expect(store.sessionTotals(SESSION_B)?.messages).toBe(2);
     expect(store.sessionTotals('nope')).toBeNull();
   });
+
+  it('keeps counting a session as more of its lines arrive', async () => {
+    const { store } = await loadedStore();
+    const before = store.sessionTotals(SESSION_A)?.messages ?? 0;
+    expect(store.ingest(sessionEvent({ sessionId: SESSION_A, dedupKey: 'later:1' }))).toBe(true);
+    expect(store.ingest(sessionEvent({ sessionId: SESSION_A, dedupKey: 'later:1' }))).toBe(false);
+    expect(store.sessionTotals(SESSION_A)?.messages).toBe(before + 1);
+  });
+
+  it('sums a session across its days, projects and models', async () => {
+    const store = new AggregateStore({ stateDir: await makeTempDir(), now });
+    store.ingest(sessionEvent({ dedupKey: 'a', input: 1 }));
+    store.ingest(sessionEvent({ dedupKey: 'b', input: 2, day: '2026-09-12' }));
+    store.ingest(sessionEvent({ dedupKey: 'c', input: 4, projectKey: PROJECT_B }));
+    store.ingest(sessionEvent({ dedupKey: 'd', input: 8, model: 'another-model' }));
+    store.ingest(sessionEvent({ dedupKey: 'e', input: 16, sessionId: 'someone-else' }));
+    expect(store.sessionTotals('s')).toMatchObject({ input: 15, messages: 4 });
+  });
+
+  it('hands out totals the caller cannot change the store through', async () => {
+    const { store } = await loadedStore();
+    const totals = store.sessionTotals(SESSION_A);
+    expect(totals).not.toBeNull();
+    if (totals) totals.input = 999_999;
+    expect(store.sessionTotals(SESSION_A)?.input).toBe(16);
+  });
+
+  it('has the same session totals after a reload, in place of what it held before', async () => {
+    const { store, stateDir } = await loadedStore();
+    await store.save();
+    const reloaded = new AggregateStore({ stateDir, now });
+    reloaded.ingest(sessionEvent({ sessionId: 'not-in-snapshot', dedupKey: 'x' }));
+    reloaded.ingest(sessionEvent({ sessionId: SESSION_A, dedupKey: 'y' }));
+    await reloaded.load();
+    expect(reloaded.sessionTotals(SESSION_A)).toEqual(store.sessionTotals(SESSION_A));
+    expect(reloaded.sessionTotals(SESSION_B)).toEqual(store.sessionTotals(SESSION_B));
+    expect(reloaded.sessionTotals('not-in-snapshot')).toBeNull();
+  });
+
+  it('drops pruned days from a session total, and a fully pruned session altogether', async () => {
+    const store = new AggregateStore({ stateDir: await makeTempDir(), now, retentionDays: 30 });
+    store.ingest(sessionEvent({ dedupKey: 'old', input: 100, day: '2026-01-01' }));
+    store.ingest(sessionEvent({ dedupKey: 'new', input: 5 }));
+    store.ingest(sessionEvent({ dedupKey: 'gone', sessionId: 'gone', day: '2026-01-01' }));
+    expect(store.prune()).toBe(2);
+    expect(store.sessionTotals('s')).toMatchObject({ input: 5, messages: 1 });
+    expect(store.sessionTotals('gone')).toBeNull();
+  });
+
+  // A session read used to walk every aggregate, so listing N sessions cost N². With one
+  // aggregate per session, 8,000 of them took many seconds and blocked the daemon (§23.69).
+  it('reads one session without walking the others', async () => {
+    const store = new AggregateStore({ stateDir: await makeTempDir(), now });
+    for (let i = 0; i < 8_000; i += 1) store.ingest(sessionEvent({ sessionId: `s-${i}`, dedupKey: `k-${i}` }));
+    const started = performance.now();
+    for (let i = 0; i < 8_000; i += 1) expect(store.sessionTotals(`s-${i}`)?.messages).toBe(1);
+    expect(performance.now() - started).toBeLessThan(2_000);
+  }, 60_000);
 
   it('reports the most recent top-level model and the first counted timestamp', async () => {
     const { store } = await loadedStore();

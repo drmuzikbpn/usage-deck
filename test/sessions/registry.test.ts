@@ -199,6 +199,31 @@ describe('transcript back-fill (§17.2)', () => {
     expect(list[0]?.tokens.input).toBe(10);
   });
 
+  // Registering a session answers with its view; building every other session's view for that
+  // blocked the daemon for seconds on a machine with many sessions (§23.69).
+  it('viewOf a registered session reads no other session', () => {
+    const h = makeHarness();
+    for (let i = 0; i < 50; i += 1) h.tokens.add(`other-${i}`);
+    h.tokens.add('sess-1', { cwd: MAIN });
+    register(h);
+    const expected = h.subsystem.registry.list().find((v) => v.sessionId === 'sess-1');
+    const read = new Set<string>();
+    const totals = h.tokens.sessionTotals.bind(h.tokens);
+    h.tokens.sessionTotals = (id) => {
+      read.add(id);
+      return totals(id);
+    };
+    expect(h.subsystem.registry.viewOf('sess-1')).toEqual(expected);
+    expect([...read]).toEqual(['sess-1']);
+  });
+
+  it('viewOf still finds a transcript-only session, and nothing for an unknown id', () => {
+    const h = makeHarness();
+    h.tokens.add('from-transcript');
+    expect(h.subsystem.registry.viewOf('from-transcript')?.discovered).toBe('transcript');
+    expect(h.subsystem.registry.viewOf('nobody')).toBeNull();
+  });
+
   it('tolerates a TokensSource without listSessions', () => {
     const configDir = tempDir();
     const tokens = new StubTokens();

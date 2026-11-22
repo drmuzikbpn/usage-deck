@@ -625,6 +625,10 @@ export class SessionRegistry {
 
   /** A view for a session id whether it is registered or only known from transcripts. */
   viewOf(sessionId: string): SessionView | null {
+    // A registered session wins over its transcript entry, as in `list()`, and must not cost
+    // a view of every other session: registering one answers with this (§23.69).
+    const registered = this.#sessions.get(sessionId);
+    if (registered !== undefined) return this.view(registered);
     return this.list().find((v) => v.sessionId === sessionId) ?? null;
   }
 
