@@ -8,10 +8,10 @@
  * payload here lets the daemon serve live headline numbers without spending the usage
  * endpoint's tiny budget. Like a hook, this never prints and always exits 0.
  */
-import { readFileSync } from 'node:fs';
+import { closeSync, constants, openSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { DaemonClient } from './clients/http.js';
-import { loadConfig, resolveConfigDir, writeJsonFile } from './config.js';
+import { CONFIG_FILE_MODE, loadConfig, resolveConfigDir } from './config.js';
 import { OBSERVE_PATH } from './limits/types.js';
 import { isSessionId } from './sessions/validate.js';
 
@@ -22,6 +22,12 @@ export const OBSERVE_DEDUPE_MS = 60_000;
 /** Same budget as the statusline itself: a render must never wait on us. */
 export const OBSERVE_TIMEOUT_MS = 400;
 const OBSERVE_STATE_FILE = 'observe-last.json';
+
+/**
+ * In place, unlike every other file here: Claude Code kills statusline commands at will, and a
+ * temp file would be left behind (§23.72). A record cut short just sends once more.
+ */
+const OBSERVE_STATE_FLAGS = constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | constants.O_NOFOLLOW;
 
 export type ObservePost = (path: string, body: unknown, token: string) => Promise<void>;
 
@@ -72,7 +78,12 @@ export async function runObserve(io: ObserveIO = {}): Promise<number> {
       });
     await post(OBSERVE_PATH, body, token);
     // Recorded only after the daemon took it, so a down daemon is retried on the next render.
-    writeJsonFile(join(configDir, OBSERVE_STATE_FILE), { sentAt: now(), payload });
+    const fd = openSync(join(configDir, OBSERVE_STATE_FILE), OBSERVE_STATE_FLAGS, CONFIG_FILE_MODE);
+    try {
+      writeFileSync(fd, `${JSON.stringify({ sentAt: now(), payload })}\n`);
+    } finally {
+      closeSync(fd);
+    }
   } catch {
     // Never break a statusline render.
   }

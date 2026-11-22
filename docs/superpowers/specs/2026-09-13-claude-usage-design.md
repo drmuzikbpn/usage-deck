@@ -2149,3 +2149,22 @@ every 30 s while tokens were being spent, kept the daemon near 760 MB for about 
   scans and dedup keys.
 
 **Tests:** `test/spend/store.test.ts`, `test/spend/index.test.ts`.
+
+### §23.72 A killed writer leaves no temp file (2026-11-22)
+
+Amends §23.36 and §23.62. Four `observe-last.json.<hex>.tmp` files, three of them empty, had
+gathered in a config directory over two weeks. An atomic write removes its temp file only if it
+lives to see the error. Killing a looping writer at random moments, with any of SIGTERM, SIGKILL,
+SIGHUP and SIGINT, left one in 47 of 100 tries. `observe` runs on every status line render, as a
+background job of a command Claude Code may kill at any time. Which signal ended those four runs
+is not recorded.
+
+- **`observe` writes `observe-last.json` in place**, mode 0600, refusing a symlink. The file only
+  spares a repeated send, so a record cut short costs one extra send.
+- **The daemon sweeps its config directory at startup**, once it holds its port: regular files
+  named `*.json` or `*.pem` plus `.<16 hex>.tmp` or `.<pid>.tmp`, more than an hour old. Every
+  other file is still written through a temp file, and any of those writers can be killed too.
+- **Measured:** `observe` in a loop, 100 kills (25 of each signal): 29 temp files left before, none
+  after.
+
+**Tests:** `test/config.test.ts`, `test/daemon.test.ts`, `test/limits-observed.test.ts`.

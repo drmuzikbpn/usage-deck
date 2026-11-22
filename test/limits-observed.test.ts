@@ -8,7 +8,7 @@
  * and passes them to the statusline command as `rate_limits`, so the daemon can take them
  * from there at no upstream cost and keep the endpoint for what only it has.
  */
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, readFileSync, statSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -682,6 +682,7 @@ function observeHarness() {
   return {
     run,
     posts,
+    stateFile: join(configDir, 'observe-last.json'),
     advance: (ms: number) => {
       clock += ms;
     },
@@ -739,6 +740,45 @@ describe('claude-usage observe', () => {
     h.failPosts();
     expect(await h.run(statuslineInput(rateLimits(10, 52)))).toBe(0);
     expect(h.posts).toHaveLength(0);
+  });
+
+  // Claude Code kills a statusline command whenever it wants; a temp file would stay (§23.72).
+  it('records what it sent in place, so being killed leaves nothing behind', async () => {
+    const h = observeHarness();
+    await h.run(statuslineInput(rateLimits(10, 52)));
+    const first = statSync(h.stateFile);
+    expect(first.mode & 0o777).toBe(0o600);
+    await h.run(statuslineInput(rateLimits(11, 52)));
+    expect(statSync(h.stateFile).ino).toBe(first.ino);
+    expect(readFileSync(h.stateFile, 'utf8')).toContain('11');
+
+    // A shorter record replaces a longer one whole.
+    await h.run(statuslineInput(rateLimits(1, 2), 'untagged'));
+    await h.run(statuslineInput(rateLimits(1, 2), 'untagged'));
+    expect(h.posts).toHaveLength(3);
+  });
+
+  it('sends again when its record was cut short', async () => {
+    const h = observeHarness();
+    await h.run(statuslineInput(rateLimits(10, 52)));
+    const whole = readFileSync(h.stateFile, 'utf8');
+    for (const cut of ['', whole.slice(0, whole.length / 2)]) {
+      writeFileSync(h.stateFile, cut);
+      await h.run(statuslineInput(rateLimits(10, 52)));
+      expect(readFileSync(h.stateFile, 'utf8')).toBe(whole);
+    }
+    expect(h.posts).toHaveLength(3);
+  });
+
+  it('does not write through a symlink', async () => {
+    const h = observeHarness();
+    await h.run(statuslineInput(rateLimits(10, 52)));
+    unlinkSync(h.stateFile);
+    const victim = `${h.stateFile}-victim`;
+    writeFileSync(victim, 'untouched');
+    symlinkSync(victim, h.stateFile);
+    expect(await h.run(statuslineInput(rateLimits(11, 52)))).toBe(0);
+    expect(readFileSync(victim, 'utf8')).toBe('untouched');
   });
 });
 

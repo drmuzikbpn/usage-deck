@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Even Seal Productions
 import { randomBytes } from 'node:crypto';
-import { chmodSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { homedir, hostname } from 'node:os';
 import { dirname, join } from 'node:path';
 
@@ -298,6 +298,32 @@ export function jsonErrorPosition(err: unknown): string {
  */
 export function tempNameFor(file: string): string {
   return `${file}.${randomBytes(8).toString('hex')}.tmp`;
+}
+
+/** A temp file this old belongs to no write still going on. */
+export const TEMP_FILE_MAX_AGE_MS = 60 * 60_000;
+
+/** `<file>.json.<hex>.tmp` (`tempNameFor`) or `state.json.<pid>.tmp` (the spend snapshot). */
+const TEMP_FILE = /\.(?:json|pem)\.(?:[0-9a-f]{16}|\d+)\.tmp$/;
+
+/** Remove temp files left by writers that were killed before they could (§23.72). Never throws. */
+export function sweepTempFiles(dir: string, now: number = Date.now()): void {
+  let names: string[];
+  try {
+    names = readdirSync(dir);
+  } catch {
+    return;
+  }
+  for (const name of names) {
+    if (!TEMP_FILE.test(name)) continue;
+    try {
+      const file = join(dir, name);
+      const stat = lstatSync(file);
+      if (stat.isFile() && now - stat.mtimeMs > TEMP_FILE_MAX_AGE_MS) unlinkSync(file);
+    } catch {
+      // gone already, or not ours to remove
+    }
+  }
 }
 
 /** Atomic write (temp file in the same directory + rename) at `mode`, default 0600. */

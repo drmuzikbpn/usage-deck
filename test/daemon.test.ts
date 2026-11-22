@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Even Seal Productions
 import { afterEach, describe, expect, it } from 'vitest';
-import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync, utimesSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { configPath, defaultConfig, saveConfig } from '../src/config.js';
 import { DaemonClient, daemonFilePath, readDaemonInfo } from '../src/clients/http.js';
 import { PortInUseError, serve, startDaemon, type DaemonHandle } from '../src/daemon.js';
@@ -52,6 +53,15 @@ describe('daemon lifecycle', () => {
     const dir = `${tempConfigDir()}/nested/claude-usage`;
     await start(dir);
     expect(statSync(dir).mode & 0o777).toBe(0o700);
+  });
+
+  it('removes temp files a killed process left behind (§23.72)', async () => {
+    const dir = tempConfigDir();
+    const left = join(dir, 'observe-last.json.0123456789abcdef.tmp');
+    writeFileSync(left, '');
+    utimesSync(left, new Date(0), new Date(0));
+    await start(dir);
+    expect(existsSync(left)).toBe(false);
   });
 
   it('serves /health on the bound port', async () => {
