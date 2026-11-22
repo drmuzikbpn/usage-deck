@@ -5,7 +5,8 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { SpendStore } from '../../src/spend/index.js';
-import { SNAPSHOT_VERSION, STATE_FILE } from '../../src/spend/store.js';
+import * as scanner from '../../src/spend/scanner.js';
+import { AggregateStore, SNAPSHOT_VERSION, STATE_FILE } from '../../src/spend/store.js';
 import {
   cleanupTempDirs,
   copyFixtures,
@@ -15,12 +16,20 @@ import {
   SESSION_A,
 } from './helpers.js';
 
+// Spies that still call through, so a test can tell a full walk from a scan of named files.
+vi.mock('../../src/spend/scanner.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof scanner>();
+  return { ...actual, scanAll: vi.fn(actual.scanAll), scanChanged: vi.fn(actual.scanChanged) };
+});
+
 const NOW = new Date('2026-09-13T12:00:00.000Z');
 const now = (): Date => NOW;
 
 const started: SpendStore[] = [];
 
 afterEach(async () => {
+  vi.mocked(scanner.scanAll).mockClear();
+  vi.mocked(scanner.scanChanged).mockClear();
   await Promise.all(started.splice(0).map((s) => s.stop()));
   await cleanupTempDirs();
 });
@@ -203,6 +212,8 @@ describe('SpendStore incremental updates', () => {
   it('restarts a truncated file and reconciles through a background rescan', async () => {
     const { store, projects } = await makeStore();
     await store.start();
+    // Events from making the fixture tree can be drained as a scan of their own: not counted here.
+    await store.whenIdle();
     const before = store.query({ since: '2020-01-01T00:00:00.000Z', groupBy: 'project' });
     const scansBefore = store.stats.scans;
 
@@ -296,5 +307,98 @@ describe('SpendStore watcher integration', () => {
       interval: 50,
     });
     expect(store.query({ since: 'today', groupBy: 'project' }).groups[0]?.key).toBe(PROJECT_A);
+  }, 10_000);
+});
+
+// Walking 27,000 transcripts to find the few that changed was most of the daemon's CPU (§23.70).
+describe('SpendStore scans what changed', () => {
+  const settled = async (store: SpendStore, messages: number): Promise<void> => {
+    await vi.waitFor(
+      () => expect(store.query({ since: 'today', groupBy: 'project' }).totals.messages).toBe(messages),
+      { timeout: 8000, interval: 50 },
+    );
+    await store.whenIdle();
+  };
+
+  it('counts a named file without walking the tree again', async () => {
+    const { store, projects } = await makeStore();
+    await store.start();
+    await appendFile(join(projects, MAIN_A), APPENDED);
+    store.notifyChanged(MAIN_A);
+    await settled(store, 4);
+    expect(scanner.scanAll).toHaveBeenCalledTimes(1); // the one at startup
+    expect(scanner.scanChanged).toHaveBeenCalled();
+  }, 10_000);
+
+  it('still reports every tracked file after a scan of one', async () => {
+    const { store, projects } = await makeStore();
+    await store.start();
+    const before = store.stats;
+    await appendFile(join(projects, MAIN_A), APPENDED);
+    store.notifyChanged(MAIN_A);
+    await settled(store, 4);
+    expect(store.stats.filesTotal).toBe(before.filesTotal);
+    expect(store.stats.filesDone).toBe(before.filesDone);
+    expect(store.stats.scans).toBeGreaterThan(before.scans);
+  }, 10_000);
+
+  it('walks the tree for a change that names no file', async () => {
+    const { store, projects } = await makeStore();
+    await store.start();
+    await appendFile(join(projects, MAIN_A), APPENDED);
+    store.notifyChanged();
+    await vi.waitFor(() => expect(scanner.scanAll).toHaveBeenCalledTimes(2), { timeout: 8000, interval: 50 });
+    await settled(store, 4);
+  }, 10_000);
+
+  it('walks the tree when a named file was truncated', async () => {
+    const { store, projects } = await makeStore();
+    await store.start();
+    await writeFile(join(projects, MAIN_A), APPENDED);
+    store.notifyChanged(MAIN_A);
+    await vi.waitFor(() => expect(scanner.scanAll).toHaveBeenCalledTimes(2), { timeout: 8000, interval: 50 });
+    await settled(store, 4);
+    expect(vi.mocked(scanner.scanAll).mock.calls[1]?.[1]).toEqual({});
+  }, 10_000);
+
+  it('walks the tree next time when a full walk failed', async () => {
+    const { store, projects } = await makeStore();
+    await store.start();
+    vi.mocked(scanner.scanAll).mockRejectedValueOnce(new Error('walk failed'));
+    await expect(store.refresh()).rejects.toThrow('walk failed');
+    await appendFile(join(projects, MAIN_A), APPENDED);
+    store.notifyChanged(MAIN_A);
+    await settled(store, 4);
+    expect(vi.mocked(scanner.scanAll).mock.calls.length).toBeGreaterThanOrEqual(3);
+  }, 10_000);
+
+  it('reads a file named while a scan is running once that scan is done', async () => {
+    const { store, projects } = await makeStore();
+    await store.start();
+    const actual = await vi.importActual<typeof scanner>('../../src/spend/scanner.js');
+    vi.mocked(scanner.scanAll).mockImplementationOnce(async (...args) => {
+      const result = await actual.scanAll(...args);
+      await appendFile(join(projects, MAIN_A), APPENDED);
+      store.notifyChanged(MAIN_A);
+      return result;
+    });
+    await store.refresh();
+    await settled(store, 4);
+  }, 10_000);
+
+  it('prunes on a full walk and not on a scan of named files', async () => {
+    const { store, projects } = await makeStore({ retentionDays: 90 });
+    await store.start();
+    const prune = vi.spyOn(AggregateStore.prototype, 'prune');
+    try {
+      await appendFile(join(projects, MAIN_A), APPENDED);
+      store.notifyChanged(MAIN_A);
+      await settled(store, 4);
+      expect(prune).not.toHaveBeenCalled();
+      await store.refresh();
+      expect(prune).toHaveBeenCalledTimes(1);
+    } finally {
+      prune.mockRestore();
+    }
   }, 10_000);
 });

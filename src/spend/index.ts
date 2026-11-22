@@ -8,13 +8,16 @@
  * mark ready → drain the queued events → start the 30 s snapshot timer. A snapshot whose
  * `version` does not match keeps serving its aggregates with `stale: true` while a full
  * rescan runs in the background, rather than cold-starting.
+ *
+ * After that a scan reads the files the watcher named; the tree is walked again only by the
+ * watcher's sweep, and whenever what changed is not known (§23.70).
  */
 
-import { scanAll } from './scanner.js';
+import { scanAll, scanChanged } from './scanner.js';
 import { AggregateStore, DEFAULT_RETENTION_DAYS, parseSince } from './store.js';
-import type { ScanStats, TokensQuery, TokensResponse, TokenTotals } from './types.js';
+import type { ScanStats, TokensQuery, TokensResponse, TokenTotals, UsageEvent } from './types.js';
 import { emptyTotals } from './types.js';
-import { TranscriptWatcher } from './watcher.js';
+import { type ChangedPaths, TranscriptWatcher } from './watcher.js';
 
 export { InvalidSinceError, parseSince, SNAPSHOT_VERSION, STATE_FILE } from './store.js';
 export type {
@@ -62,7 +65,9 @@ export class SpendStore {
   #started = false;
   #stopped = false;
   #current: Promise<void> | null = null;
-  #pendingScan = false;
+  /** A scan is wanted: of the whole tree, or else of the files in `#changed`. */
+  #walkTree = false;
+  #changed = new Set<string>();
   #progress = { filesDone: 0, filesTotal: 0, bytesDone: 0, bytesTotal: 0 };
   #parseErrors = 0;
   #scans = 0;
@@ -174,7 +179,7 @@ export class SpendStore {
 
     this.#watcher = new TranscriptWatcher({
       dir: this.#projectsDir,
-      onFlush: () => this.#scan(),
+      onFlush: (changed) => this.#scan(changed),
       onError: this.#onError,
       ...(this.#debounceMs === undefined ? {} : { debounceMs: this.#debounceMs }),
       ...(this.#sweepMs === undefined ? {} : { sweepMs: this.#sweepMs }),
@@ -227,11 +232,10 @@ export class SpendStore {
     }
   }
 
-  #scan(): Promise<void> {
-    if (this.#current) {
-      this.#pendingScan = true;
-      return this.#current;
-    }
+  #scan(changed: ChangedPaths = null): Promise<void> {
+    if (changed === null) this.#walkTree = true;
+    else for (const path of changed) this.#changed.add(path);
+    if (this.#current) return this.#current;
     const run = this.#runScans().finally(() => {
       this.#current = null;
     });
@@ -242,50 +246,63 @@ export class SpendStore {
   async #runScans(): Promise<void> {
     try {
       do {
-        this.#pendingScan = false;
         await this.#scanOnce();
-      } while (this.#pendingScan && !this.#stopped);
+      } while ((this.#walkTree || this.#changed.size > 0) && !this.#stopped);
     } finally {
       this.#stale = false;
     }
   }
 
   async #scanOnce(): Promise<void> {
+    const walkTree = this.#walkTree;
+    const changed = this.#changed;
+    this.#walkTree = false;
+    this.#changed = new Set();
+
     let counted = 0;
-    const result = await scanAll(
-      this.#projectsDir,
-      this.#store.offsets,
-      (event) => {
-        if (this.#store.ingest(event)) counted += 1;
-      },
-      {
-        onProgress: (progress) => {
-          this.#progress = progress;
-        },
-        onTitle: (sessionId, title) => {
-          if (this.#store.setTitle(sessionId, title)) counted += 1;
-        },
-      },
-    );
+    const sink = (event: UsageEvent): void => {
+      if (this.#store.ingest(event)) counted += 1;
+    };
+    const onTitle = (sessionId: string, title: string): void => {
+      if (this.#store.setTitle(sessionId, title)) counted += 1;
+    };
+
+    let result;
+    try {
+      result = walkTree
+        ? await scanAll(this.#projectsDir, this.#store.offsets, sink, {
+            onTitle,
+            onProgress: (progress) => {
+              this.#progress = progress;
+            },
+          })
+        : await scanChanged(this.#projectsDir, this.#store.offsets, changed, sink, { onTitle });
+    } catch (err) {
+      this.#walkTree = true; // whatever this scan was for is still unread
+      throw err;
+    }
 
     this.#store.setOffsets(result.offsets);
     this.#parseErrors += result.parseErrors;
-    this.#progress = {
-      filesDone: result.filesDone,
-      filesTotal: result.filesTotal,
-      bytesDone: result.bytesDone,
-      bytesTotal: result.bytesTotal,
-    };
     this.#lastScanAt = this.#now().toISOString();
     this.#scans += 1;
-    this.#store.prune();
+    if (walkTree) {
+      // Progress and retention are about the whole tree, which a few files say nothing of.
+      this.#progress = {
+        filesDone: result.filesDone,
+        filesTotal: result.filesTotal,
+        bytesDone: result.bytesDone,
+        bytesTotal: result.bytesTotal,
+      };
+      this.#store.prune();
+    }
 
     if (result.restarted.length > 0) {
       // §23.8: a truncated or replaced file cannot be rolled back out of pre-summed
       // counters, so re-read everything; the dedup set makes the re-read idempotent.
       this.#stale = true;
       this.#store.setOffsets({});
-      this.#pendingScan = true;
+      this.#walkTree = true;
     }
 
     if (counted > 0) this.#emitChange();

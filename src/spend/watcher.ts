@@ -7,22 +7,29 @@
  * safety sweep because recursive watching is unreliable on some Linux setups. The watcher
  * is started *before* the initial scan and stays paused until `resume()`, so appends that
  * land mid-scan are queued and drained afterwards instead of waiting for the sweep.
+ *
+ * A flush is handed the paths that changed, or `null` for "look at everything": an event
+ * without a name, more paths than are worth listing, a flush that failed, and the sweep,
+ * which also covers the events macOS drops without saying so (§23.70).
  */
 
 import { watch, type FSWatcher } from 'node:fs';
 
 export const DEFAULT_DEBOUNCE_MS = 500;
 export const DEFAULT_SWEEP_MS = 5 * 60_000;
-/**
- * §23.38: floor between flush starts. Every flush walks the whole projects tree; with many
- * live sessions the 500 ms debounce alone let that run near-continuously.
- */
+/** §23.38: floor between flush starts, so a busy tree does not scan near-continuously. */
 export const DEFAULT_MIN_FLUSH_INTERVAL_MS = 5_000;
+
+/** Past this many distinct paths, one walk is cheaper than looking each of them up. */
+export const MAX_CHANGED_PATHS = 1_000;
+
+/** Paths relative to the watched dir, or `null` for "anything may have changed". */
+export type ChangedPaths = ReadonlySet<string> | null;
 
 export interface WatcherOptions {
   dir: string;
   /** Re-scan callback. Never called concurrently with itself. */
-  onFlush: () => void | Promise<void>;
+  onFlush: (changed: ChangedPaths) => void | Promise<void>;
   debounceMs?: number;
   sweepMs?: number;
   minFlushIntervalMs?: number;
@@ -32,7 +39,7 @@ export interface WatcherOptions {
 
 export class TranscriptWatcher {
   readonly #dir: string;
-  readonly #onFlush: () => void | Promise<void>;
+  readonly #onFlush: (changed: ChangedPaths) => void | Promise<void>;
   readonly #debounceMs: number;
   readonly #sweepMs: number;
   readonly #minFlushIntervalMs: number;
@@ -45,6 +52,8 @@ export class TranscriptWatcher {
   #lastFlushAt = Number.NEGATIVE_INFINITY;
   #paused = true;
   #pending = 0;
+  #changed = new Set<string>();
+  #everything = false;
   #stopped = false;
   #flushing = false;
   #again = false;
@@ -78,8 +87,8 @@ export class TranscriptWatcher {
   async start(): Promise<void> {
     if (this.#stopped) return;
     try {
-      this.#watcher = watch(this.#dir, { recursive: true, persistent: false }, () => {
-        this.notify();
+      this.#watcher = watch(this.#dir, { recursive: true, persistent: false }, (_event, name) => {
+        this.notify(name);
       });
       this.#watcher.on('error', (err) => {
         this.#onError(err);
@@ -94,15 +103,20 @@ export class TranscriptWatcher {
     // The sweep does not touch `#pending`: while paused it is a no-op, because the
     // post-scan drain already covers everything written up to that point.
     this.#sweep = setInterval(() => {
+      this.#everything = true;
       this.#fire();
     }, this.#sweepMs);
     this.#sweep.unref?.();
   }
 
-  /** Record a change. While paused the event only accumulates. */
-  notify(_path?: string): void {
+  /** Record a change, to everything if unnamed. While paused the event only accumulates. */
+  notify(path?: string | null): void {
     if (this.#stopped) return;
     this.#pending += 1;
+    if (path === undefined || path === null || path === '') this.#everything = true;
+    else if (!this.#everything) this.#changed.add(path);
+    if (this.#changed.size > MAX_CHANGED_PATHS) this.#everything = true;
+    if (this.#everything) this.#changed.clear();
     if (this.#paused) return;
 
     if (this.#debounce) clearTimeout(this.#debounce);
@@ -157,13 +171,15 @@ export class TranscriptWatcher {
     this.#lastFlushAt = Date.now();
     this.#pending = 0;
     this.#flushing = true;
+    const changed = this.#everything ? null : this.#changed;
+    this.#everything = false;
+    this.#changed = new Set();
 
     let result: void | Promise<void>;
     try {
-      result = this.#onFlush();
+      result = this.#onFlush(changed);
     } catch (err) {
-      this.#onError(err);
-      this.#finish();
+      this.#failed(err);
       return;
     }
 
@@ -171,12 +187,18 @@ export class TranscriptWatcher {
       void (result as Promise<void>).then(
         () => this.#finish(),
         (err: unknown) => {
-          this.#onError(err);
-          this.#finish();
+          this.#failed(err);
         },
       );
       return;
     }
+    this.#finish();
+  }
+
+  /** Its paths are spent, and some may not have been read: the next flush covers everything. */
+  #failed(err: unknown): void {
+    this.#everything = true;
+    this.#onError(err);
     this.#finish();
   }
 
