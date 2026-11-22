@@ -90,12 +90,13 @@ describe('install: the menu bar app', () => {
   });
 
   it('installs it, opens it, and adds the menu bar item', async () => {
-    const r = await offer({ apps: [null, APP], answers: [true, true, false] });
+    const r = await offer({ apps: [null, '/opt/apps/SwiftBar.app'], answers: [true, true, true] });
     expect(r.questions.slice(0, 2)).toEqual([INSTALL, ADD]);
     expect(r.lines.slice(0, 2)).toEqual([`${BREW} install --cask swiftbar`, '/usr/bin/open -a SwiftBar']);
     expect(existsSync(join(r.folder, PLUGIN_FILE))).toBe(true);
     expect(existsSync(join(r.configDir, PLUGIN_RECORD))).toBe(true);
     expect(r.questions[2]).toContain('Start SwiftBar at login');
+    expect(r.lines.at(-1)).toContain('/opt/apps/SwiftBar.app');
   });
 
   it('leaves the menu bar item for later when asked to', async () => {
@@ -111,6 +112,11 @@ describe('install: the menu bar app', () => {
       respond: (file) => (file === '/usr/bin/defaults' ? { code: 1 } : undefined),
     });
     expect(r.out).toContain('no plugin folder yet');
+  });
+
+  it('offers SwiftBar once, even when it cannot be found afterwards', async () => {
+    const r = await offer({ answers: [true, true, true, true] });
+    expect(r.questions).toEqual([INSTALL, ADD]);
   });
 
   it('a failed Homebrew install opens nothing and says how to retry', async () => {

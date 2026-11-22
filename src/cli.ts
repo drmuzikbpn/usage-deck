@@ -519,7 +519,7 @@ export async function run(argv: readonly string[], io: CliIO = {}): Promise<numb
       return runMenubar(rest, {
         stdout,
         stderr,
-        ...(prompt === null ? {} : { confirm: (question: string) => prompt(question, false) }),
+        ...(prompt === null ? {} : { confirm: (question: string, defaultYes = false) => prompt(question, defaultYes) }),
         ...(io.configDir === undefined ? {} : { configDir: io.configDir }),
         ...(io.client === undefined ? {} : { client: io.client }),
         ...(io.env === undefined ? {} : { env: io.env }),

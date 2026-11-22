@@ -261,9 +261,14 @@ export interface MenubarIO {
   nodePath?: string;
   binPath?: string;
   /** Answers a yes/no question. Absent when nobody is at the terminal. */
-  confirm?: (question: string) => Promise<boolean>;
+  confirm?: (question: string, defaultYes?: boolean) => Promise<boolean>;
   /** The menu-bar app to start at login. `null` when neither is installed. */
   menuBarApp?: string | null;
+  platform?: string;
+  /** §23.73: Homebrew, if it is there; the real lookup by default. */
+  findBrew?: () => string | null;
+  /** `install` has already offered SwiftBar, so `--install` must not ask again. */
+  swiftBarOffered?: boolean;
 }
 
 /** What the plugin shows right now. Never throws: SwiftBar would show the stack instead. */
@@ -360,13 +365,26 @@ const LOGIN_ITEM_ADD = [
 ];
 const osa = (lines: readonly string[], arg: string): string[] => [...lines.flatMap((line) => ['-e', line]), arg];
 
+function menuBarAppOf(io: MenubarIO): string | null {
+  return io.menuBarApp !== undefined ? io.menuBarApp : findMenuBarApp(io.env ?? process.env);
+}
+
+/** §23.73: with someone at the terminal and neither app installed, offer SwiftBar first. */
+async function haveMenuBarApp(io: MenubarIO): Promise<boolean> {
+  const confirm = io.confirm;
+  if (confirm === undefined || io.swiftBarOffered === true) return true;
+  if ((io.platform ?? process.platform) !== 'darwin' || menuBarAppOf(io) !== null) return true;
+  const { findBrew, getSwiftBar } = await import('./install/menu-bar.js');
+  return getSwiftBar({ exec: io.exec ?? defaultExec, stdout: io.stdout, findBrew: io.findBrew ?? findBrew, ask: confirm });
+}
+
 /**
  * The daemon comes back after a restart through launchd; the app that draws the menu does not
  * unless it is a login item. An install has already succeeded by now, so nothing here fails it.
  */
 async function offerLoginItem(argv: readonly string[], io: MenubarIO): Promise<void> {
   if (argv.includes('--no-login-item')) return;
-  const app = io.menuBarApp !== undefined ? io.menuBarApp : findMenuBarApp(io.env ?? process.env);
+  const app = menuBarAppOf(io);
   if (app === null) return;
   const name = basename(app, '.app');
   const requested = argv.includes('--login-item');
@@ -400,6 +418,10 @@ export async function runMenubar(argv: readonly string[], io: MenubarIO): Promis
     const given = flagValue(argv, '--dir');
     if (argv.includes('--dir') && (given === undefined || given.startsWith('--'))) {
       io.stderr('claude-usage menubar: --dir needs a folder\n');
+      return 1;
+    }
+    if (given === undefined && !(await haveMenuBarApp(io))) {
+      io.stderr('claude-usage menubar: nothing added. If SwiftBar or xbar is somewhere else, pass --dir <its plugin folder>.\n');
       return 1;
     }
     const dir = given ?? (await swiftBarPluginDir(io.exec ?? defaultExec));

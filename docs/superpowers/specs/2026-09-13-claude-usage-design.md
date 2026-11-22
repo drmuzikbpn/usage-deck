@@ -2183,8 +2183,13 @@ either, so the item was found only by reading the guide.
   `menubar --install` once the user has picked a plugin folder. Install never writes SwiftBar's
   preferences. Without Homebrew, yes opens SwiftBar's download page.
 - **`--yes` never installs or opens it**; it prints one line saying how.
+- **Existing installs.** Updates run in the background and cannot ask. `menubar --install`, at a
+  terminal and without `--dir`, makes the same offer first; a no, or a failed install, adds nothing
+  and exits 1. A manual `claude-usage update` that did not fail prints one line naming that command
+  when neither app is there. `update --check` and the daemon's own updates say nothing.
 - **An app but no plugin of ours:** one line naming `claude-usage menubar --install`, no question.
   Both there: nothing.
 - **Nothing here fails the install.** A failed Homebrew run prints the command to try by hand.
 
-**Tests:** `test/install/menu-bar.test.ts`, `test/install/install.test.ts`.
+**Tests:** `test/install/menu-bar.test.ts`, `test/install/install.test.ts`, `test/menubar.test.ts`,
+`test/update/cli.test.ts`.

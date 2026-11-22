@@ -251,7 +251,7 @@ overwriting it:
 
 `claude-usage install` checks for SwiftBar or xbar and, when neither is there, offers to install
 SwiftBar with Homebrew and add this item. The answer defaults to no, and `--yes` never installs it.
-By hand:
+Already have Usage Deck? `claude-usage menubar --install` makes the same offer. By hand:
 
 ```bash
 brew install --cask swiftbar   # open it once and pick a plugin folder
