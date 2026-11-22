@@ -4,7 +4,7 @@ import { rmSync } from 'node:fs';
 import { createTokenReader } from './credentials/index.js';
 import { EventBus } from './events/bus.js';
 import { LimitsPoller, effectivePollIntervalMs } from './limits/poller.js';
-import { effectiveTlsPort, ensureConfigDir, expandHome, generateToken, loadConfig, resolveConfigDir, saveConfig, writeJsonFile, type Config } from './config.js';
+import { effectiveTlsPort, ensureConfigDir, expandHome, generateToken, loadConfig, resolveConfigDir, saveConfig, sweepTempFiles, writeJsonFile, type Config } from './config.js';
 import { daemonFilePath, isOwnPidAlive, readAuthToken, readDaemonInfo } from './clients/http.js';
 import { bindWants, LAN_KEYWORD, resolveBindAddresses, TAILSCALE_KEYWORD } from './net/bind.js';
 import { resolveLanIPv4, resolveLocalHostName } from './net/lan.js';
@@ -456,6 +456,7 @@ export async function startDaemon(opts: DaemonOptions = {}): Promise<DaemonHandl
       });
     };
     writeDaemonFile();
+    sweepTempFiles(configDir);
 
     if (opts.poll !== false) {
       poller.start();

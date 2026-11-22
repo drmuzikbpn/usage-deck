@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Even Seal Productions
 import { describe, expect, it } from 'vitest';
-import { mkdtempSync, readFileSync, readdirSync, statSync, symlinkSync, writeFileSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, statSync, symlinkSync, utimesSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -17,6 +17,8 @@ import {
   redactConfig,
   resolveConfigDir,
   saveConfig,
+  sweepTempFiles,
+  TEMP_FILE_MAX_AGE_MS,
   validateConfig,
 } from '../src/config.js';
 
@@ -238,3 +240,54 @@ describe('writing and reading config.json safely (§23.62)', () => {
   });
 });
 
+// A process killed mid-write cannot remove its own temp file (§23.72).
+describe('sweepTempFiles', () => {
+  const NOW = Date.parse('2026-11-22T12:00:00.000Z');
+  const age = (file: string, ms: number): void => {
+    const at = new Date(NOW - ms);
+    utimesSync(file, at, at);
+  };
+
+  it('removes what a killed write left, and nothing else', () => {
+    const dir = tempDir();
+    const old = (name: string): void => {
+      writeFileSync(join(dir, name), 'x');
+      age(join(dir, name), TEMP_FILE_MAX_AGE_MS + 1);
+    };
+    const leftovers = [tempNameFor(join(dir, 'observe-last.json')), tempNameFor(join(dir, 'tls-key.pem'))].map((f) => f.slice(dir.length + 1));
+    for (const name of [...leftovers, 'state.json.4242.tmp']) old(name);
+    const kept = ['config.json', 'state.json', 'notes.tmp', 'config.json.bak.tmp', 'observe-last.json.0123.tmp.txt', 'mine.txt.4242.tmp', 'pause.json.backup.tmp', 'pause.json.abc.tmp', 'hook-state.json.0123456789abcdeg.tmp'];
+    for (const name of kept) old(name);
+
+    sweepTempFiles(dir, NOW);
+    expect(readdirSync(dir).sort()).toEqual([...kept].sort());
+  });
+
+  it('leaves a write that may still be going on', () => {
+    const dir = tempDir();
+    const file = tempNameFor(join(dir, 'sessions.json'));
+    writeFileSync(file, 'x');
+    age(file, TEMP_FILE_MAX_AGE_MS - 1000);
+    sweepTempFiles(dir, NOW);
+    expect(readdirSync(dir)).toHaveLength(1);
+  });
+
+  it('leaves a directory or a symlink with such a name, and goes on', () => {
+    const dir = tempDir();
+    const target = join(tempDir(), 'target');
+    writeFileSync(target, 'x');
+    age(target, TEMP_FILE_MAX_AGE_MS + 1);
+    mkdirSync(join(dir, 'a.json.1.tmp'));
+    age(join(dir, 'a.json.1.tmp'), TEMP_FILE_MAX_AGE_MS + 1);
+    symlinkSync(target, join(dir, 'b.json.2.tmp'));
+    writeFileSync(join(dir, 'c.json.3.tmp'), 'x');
+    age(join(dir, 'c.json.3.tmp'), TEMP_FILE_MAX_AGE_MS + 1);
+    sweepTempFiles(dir, Date.now() + 10 * TEMP_FILE_MAX_AGE_MS);
+    expect(readdirSync(dir).sort()).toEqual(['a.json.1.tmp', 'b.json.2.tmp']);
+    expect(readFileSync(target, 'utf8')).toBe('x');
+  });
+
+  it('does not throw when the directory is missing', () => {
+    expect(() => sweepTempFiles(join(tempDir(), 'none'), NOW)).not.toThrow();
+  });
+});
