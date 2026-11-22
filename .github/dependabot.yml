@@ -3,6 +3,9 @@
 #
 # One file on the default branch covers every long-lived branch: Dependabot only reads
 # `main`, and `target-branch` points an entry at the Android and iOS trees.
+# Version-update PRs are OFF: `open-pull-requests-limit: 0` on every entry (Alan, 2026-11-21).
+# Security updates are a repository setting, are not counted against the limit, and still open.
+# Raise a limit to bring that entry's version updates back.
 version: 2
 updates:
   # --- main: the daemon ---------------------------------------------------------
@@ -10,7 +13,7 @@ updates:
     directory: /
     target-branch: main
     schedule: { interval: weekly }
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
     groups:
       dev-dependencies:
         dependency-type: development
@@ -25,20 +28,23 @@ updates:
     directory: /
     target-branch: main
     schedule: { interval: weekly }
+    open-pull-requests-limit: 0
 
   # --- usage-android: the Android dashboard --------------------------------------
   - package-ecosystem: gradle
     directory: /
     target-branch: usage-android
     schedule: { interval: weekly }
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
   - package-ecosystem: github-actions
     directory: /
     target-branch: usage-android
     schedule: { interval: weekly }
+    open-pull-requests-limit: 0
 
   # --- usage-ios: the iPhone and watch app ---------------------------------------
   - package-ecosystem: github-actions
     directory: /
     target-branch: usage-ios
     schedule: { interval: weekly }
+    open-pull-requests-limit: 0
