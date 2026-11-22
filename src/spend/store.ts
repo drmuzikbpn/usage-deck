@@ -9,7 +9,8 @@
  * `load()` / `save()`.
  */
 
-import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
+import { closeSync, mkdirSync, openSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import type { GroupBy, TokensGroup, TokensQuery, TokenTotals, UsageEvent } from './types.js';
@@ -22,6 +23,8 @@ export const DEFAULT_RETENTION_DAYS = 90;
 
 const KEY_SEP = '\u0000';
 const DAY_LENGTH = 10; // YYYY-MM-DD
+/** A snapshot is written in pieces of about this many characters (§23.71). */
+const SNAPSHOT_PIECE = 64 * 1024;
 
 export class InvalidSinceError extends Error {
   readonly code = 'invalid_since';
@@ -136,6 +139,21 @@ function splitAggKey(key: string): {
 } {
   const [day = '', projectKey = '', sessionId = '', model = ''] = key.split(KEY_SEP);
   return { day, projectKey, sessionId, model };
+}
+
+/** `,"name":[…]`, an element at a time. */
+function* jsonArray<T, U>(
+  name: string,
+  items: Iterable<T>,
+  toJson: (item: T) => U,
+): Generator<string> {
+  yield `,${JSON.stringify(name)}:[`;
+  let comma = '';
+  for (const item of items) {
+    yield comma + JSON.stringify(toJson(item));
+    comma = ',';
+  }
+  yield ']';
 }
 
 function addInto(target: TokenTotals, event: UsageEvent): void {
@@ -480,34 +498,63 @@ export class AggregateStore {
     return { loaded: true, versionMismatch };
   }
 
-  /** Atomic temp + rename; a no-op (returning `false`) when nothing changed. */
+  /**
+   * Atomic temp + rename; a no-op (returning `false`) when nothing changed.
+   *
+   * Written a piece at a time, so the whole snapshot is never in memory as one string, and
+   * without yielding: aggregates and dedup keys from different moments would lose or
+   * double-count events on reload (§23.71).
+   */
   async save(): Promise<boolean> {
     if (!this.#dirty) return false;
 
-    const snapshot: Snapshot = {
-      version: SNAPSHOT_VERSION,
-      savedAt: this.#now().toISOString(),
-      offsets: this.#offsets,
-      aggregates: [...this.#aggregates].map(([key, t]) => [
-        key,
-        [t.input, t.output, t.cacheCreate, t.cacheRead, t.messages],
-      ]),
-      dedup: [...this.#dedup].map(([key, day]) => `${day}${key}`),
-      sessions: [...this.#sessions],
-      titles: [...this.#titles],
-      projects: [...this.#projects],
-    };
-
-    await mkdir(this.#stateDir, { recursive: true });
+    mkdirSync(this.#stateDir, { recursive: true });
     const tmp = `${this.statePath}.${process.pid}.tmp`;
     try {
-      await writeFile(tmp, JSON.stringify(snapshot), { mode: 0o600 });
-      await rename(tmp, this.statePath);
+      const fd = openSync(tmp, 'w', 0o600);
+      try {
+        let piece = '';
+        for (const part of this.#snapshotParts()) {
+          piece += part;
+          if (piece.length < SNAPSHOT_PIECE) continue;
+          writeFileSync(fd, piece);
+          piece = '';
+        }
+        writeFileSync(fd, piece);
+      } finally {
+        closeSync(fd);
+      }
+      renameSync(tmp, this.statePath);
     } catch (err) {
-      await unlink(tmp).catch(() => {});
+      rmSync(tmp, { force: true });
       throw err;
     }
     this.#dirty = false;
     return true;
+  }
+
+  /** The JSON of a `Snapshot`, an entry at a time. */
+  *#snapshotParts(): Generator<string> {
+    const head: Pick<Snapshot, 'version' | 'savedAt'> = {
+      version: SNAPSHOT_VERSION,
+      savedAt: this.#now().toISOString(),
+    };
+    yield `${JSON.stringify(head).slice(0, -1)},"offsets":{`;
+    let comma = '';
+    for (const file in this.#offsets) {
+      yield `${comma}${JSON.stringify(file)}:${this.#offsets[file]}`;
+      comma = ',';
+    }
+    yield '}';
+
+    yield* jsonArray('aggregates', this.#aggregates, ([key, t]): Snapshot['aggregates'][number] => [
+      key,
+      [t.input, t.output, t.cacheCreate, t.cacheRead, t.messages],
+    ]);
+    yield* jsonArray('dedup', this.#dedup, ([key, day]): Snapshot['dedup'][number] => `${day}${key}`);
+    yield* jsonArray('sessions', this.#sessions, (entry): Snapshot['sessions'][number] => entry);
+    yield* jsonArray('titles', this.#titles, (entry): [string, string] => entry);
+    yield* jsonArray('projects', this.#projects, (entry): Snapshot['projects'][number] => entry);
+    yield '}';
   }
 }

@@ -5,7 +5,7 @@
  * (spec §5.3, §6, §23.4–23.8).
  *
  * Startup order: load the snapshot → start the watcher (paused, queueing) → initial scan →
- * mark ready → drain the queued events → start the 30 s snapshot timer. A snapshot whose
+ * mark ready → drain the queued events → start the 5-minute snapshot timer. A snapshot whose
  * `version` does not match keeps serving its aggregates with `stale: true` while a full
  * rescan runs in the background, rather than cold-starting.
  *
@@ -30,7 +30,8 @@ export type {
   UsageEvent,
 } from './types.js';
 
-export const SNAPSHOT_INTERVAL_MS = 30_000;
+/** A crash costs re-reading what came after the last snapshot, which dedup makes exact (§23.71). */
+export const SNAPSHOT_INTERVAL_MS = 5 * 60_000;
 
 export interface SpendStoreOptions {
   /** `~/.claude/projects` (or a fixture tree in tests). */
@@ -198,9 +199,9 @@ export class SpendStore {
     this.#ready = true;
     this.#watcher.resume();
 
-    this.#snapshotTimer = setInterval(() => {
-      void this.#store.save().catch(this.#onError);
-    }, this.#snapshotIntervalMs);
+    const save = (): void => void this.#store.save().catch(this.#onError);
+    if (!loaded.loaded) save(); // a first scan is the one worth not repeating after a crash
+    this.#snapshotTimer = setInterval(save, this.#snapshotIntervalMs);
     this.#snapshotTimer.unref?.();
   }
 

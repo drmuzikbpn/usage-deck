@@ -137,7 +137,7 @@ Interface: `getAccessToken(): Promise<string>`; throws `NoCredentialsError`.
   5-minute safety sweep (recursive watch is unreliable on some Linux setups).
 - `store.ts`: aggregates keyed by `(day, project, sessionId, model)`; dedup set; answers
   `/v1/spend`. Retention 90 days (aggregates and dedup entries pruned together).
-  Snapshot to `state.json` every 30 s and on shutdown: `{ version, offsets: {file: bytes},
+  Snapshot to `state.json` every 5 min (§23.71) and on shutdown: `{ version, offsets: {file: bytes},
   aggregates, dedup }`. Snapshot version mismatch → full rescan.
 
 ## 6. Daemon lifecycle (`src/daemon.ts`)
@@ -2128,3 +2128,24 @@ results.
   after, with the same events and totals. Event names checked on macOS and on Linux.
 
 **Tests:** `test/spend/scanner.test.ts`, `test/spend/watcher.test.ts`, `test/spend/index.test.ts`.
+
+### §23.71 Snapshots are written in pieces, every 5 minutes (2026-11-22)
+
+Amends §5.3 and §23.7. With 611,000 dedup keys a snapshot is 66 MB. Building it as one string,
+every 30 s while tokens were being spent, kept the daemon near 760 MB for about 170 MB of data.
+
+- **Every 5 minutes, at shutdown, and once after a first scan** that had no snapshot to start
+  from. After a crash the daemon re-reads what came after the last snapshot; dedup counts it once.
+  A transcript deleted in that window before it is re-read is lost.
+- **Written about 64 KB at a time** to the temp file, then renamed. The format is unchanged, so
+  either version reads the other's file. Mode stays `0600`.
+- **Without yielding.** Aggregates and dedup keys from different moments would lose or
+  double-count events on reload. The cost is one pause of about 0.2 s per save at this size; the
+  old save paused for about 0.09 s, ten times as often.
+- **A change during a save is still due.** The old save cleared the dirty flag after its writes,
+  which also cleared it for events that arrived meanwhile.
+- **Measured** side by side for 11 minutes on one live tree: resident memory 750 MB on average and
+  873 MB at the end before, 461 MB and 456 MB after; CPU 22.0 s before, 14.4 s after; the same
+  scans and dedup keys.
+
+**Tests:** `test/spend/store.test.ts`, `test/spend/index.test.ts`.
