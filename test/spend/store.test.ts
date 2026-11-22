@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Even Seal Productions
-import { readFile, writeFile } from 'node:fs/promises';
+import * as fs from 'node:fs';
+import { mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { scanAll } from '../../src/spend/scanner.js';
 import {
@@ -22,6 +23,12 @@ import {
   SESSION_A,
   SESSION_B,
 } from './helpers.js';
+
+// A spy that still calls through, to see the size of each write.
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof fs>();
+  return { ...actual, writeFileSync: vi.fn(actual.writeFileSync) };
+});
 
 afterEach(cleanupTempDirs);
 
@@ -252,6 +259,103 @@ describe('AggregateStore snapshot', () => {
     expect(reloaded.sessionStartedAt(SESSION_A)).toBe(store.sessionStartedAt(SESSION_A));
     // a reloaded dedup set still suppresses the same keys
     expect(reloaded.counts.dedupKeys).toBe(5);
+  });
+
+  // One 66 MB string per save was most of the daemon's memory (§23.71).
+  it('writes a large snapshot in small pieces that add up to the same state', async () => {
+    const stateDir = await makeTempDir('claude-usage-state-');
+    const store = new AggregateStore({ stateDir, now });
+    for (let i = 0; i < 20_000; i += 1) {
+      store.ingest(sessionEvent({ dedupKey: `msg_"${i}"\\é:req_${i}`, sessionId: `s${i % 500}` }));
+    }
+    store.setTitle('s1', 'a "quoted" title');
+    store.setOffsets({ 'p/a.jsonl': 10, 'p/"b".jsonl': 20 });
+
+    vi.mocked(fs.writeFileSync).mockClear();
+    await store.save();
+    const sizes = vi.mocked(fs.writeFileSync).mock.calls.map((call) => String(call[1]).length);
+    const total = sizes.reduce((sum, n) => sum + n, 0);
+    expect(total).toBeGreaterThan(800_000);
+    expect(Math.max(...sizes)).toBeLessThan(100_000);
+
+    const reloaded = new AggregateStore({ stateDir, now });
+    expect(await reloaded.load()).toEqual({ loaded: true, versionMismatch: false });
+    const all = { since: '2020-01-01T00:00:00.000Z', groupBy: 'session' } as const;
+    expect(reloaded.query(all)).toEqual(store.query(all));
+    expect(reloaded.counts).toEqual(store.counts);
+    expect(reloaded.offsets).toEqual(store.offsets);
+    expect(reloaded.sessionTitle('s1')).toBe('a "quoted" title');
+    expect(reloaded.ingest(sessionEvent({ dedupKey: 'msg_"7"\\é:req_7' }))).toBe(false);
+  });
+
+  it('round-trips an empty store', async () => {
+    const stateDir = await makeTempDir('claude-usage-state-');
+    const store = new AggregateStore({ stateDir, now });
+    store.setOffsets({});
+    expect(await store.save()).toBe(true);
+    const reloaded = new AggregateStore({ stateDir, now });
+    expect(await reloaded.load()).toEqual({ loaded: true, versionMismatch: false });
+  });
+
+  it('keeps the snapshot private to the user', async () => {
+    const { store, stateDir } = await loadedStore();
+    await store.save();
+    expect((await stat(join(stateDir, STATE_FILE))).mode & 0o777).toBe(0o600);
+  });
+
+  it('keeps the old snapshot, cleans up and tries again after a write that failed', async () => {
+    const { store, stateDir } = await loadedStore();
+    await store.save();
+    const before = await readFile(join(stateDir, STATE_FILE), 'utf8');
+
+    store.ingest(sessionEvent({ dedupKey: 'later' }));
+    vi.mocked(fs.writeFileSync).mockImplementationOnce(() => {
+      throw new Error('disk full');
+    });
+    await expect(store.save()).rejects.toThrow('disk full');
+    expect(await readFile(join(stateDir, STATE_FILE), 'utf8')).toBe(before);
+    expect(await readdir(stateDir)).toEqual([STATE_FILE]);
+    expect(store.dirty).toBe(true);
+    expect(await store.save()).toBe(true);
+  });
+
+  it('cleans up when the snapshot cannot be put in place', async () => {
+    const { store, stateDir } = await loadedStore();
+    await mkdir(join(stateDir, STATE_FILE, 'in-the-way'), { recursive: true });
+    await expect(store.save()).rejects.toThrow();
+    expect(await readdir(stateDir)).toEqual([STATE_FILE]);
+    expect(store.dirty).toBe(true);
+    await rm(join(stateDir, STATE_FILE), { recursive: true });
+    expect(await store.save()).toBe(true);
+  });
+
+  // Aggregates and dedup keys from different moments would lose or double-count on reload.
+  it('never tears: what arrives during a save is in all of the snapshot or none', async () => {
+    const stateDir = await makeTempDir('claude-usage-state-');
+    const store = new AggregateStore({ stateDir, now });
+    let next = 0;
+    const arrive = (): void => {
+      store.ingest(sessionEvent({ dedupKey: `msg_${next}:req`, sessionId: `s${next}` }));
+      next += 1;
+    };
+    while (next < 5_000) arrive();
+
+    let saving = true;
+    const saved = store.save().finally(() => {
+      saving = false;
+    });
+    while (saving) {
+      for (let i = 0; i < 50; i += 1) arrive();
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    await saved;
+
+    const reloaded = new AggregateStore({ stateDir, now });
+    await reloaded.load();
+    const { totals } = reloaded.query({ since: '2020-01-01T00:00:00.000Z', groupBy: 'project' });
+    expect(totals.messages).toBe(reloaded.counts.dedupKeys);
+    // and whatever missed this one is still due
+    expect(reloaded.counts.dedupKeys < next).toBe(store.dirty);
   });
 
   it('reports a version mismatch but keeps the old aggregates serving', async () => {

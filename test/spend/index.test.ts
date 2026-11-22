@@ -4,7 +4,7 @@ import { appendFile, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { SpendStore } from '../../src/spend/index.js';
+import { SNAPSHOT_INTERVAL_MS, SpendStore } from '../../src/spend/index.js';
 import * as scanner from '../../src/spend/scanner.js';
 import { AggregateStore, SNAPSHOT_VERSION, STATE_FILE } from '../../src/spend/store.js';
 import {
@@ -279,6 +279,41 @@ describe('SpendStore snapshot', () => {
     const after = second.query({ since: '2020-01-01T00:00:00.000Z', groupBy: 'project' });
     expect(after.stale).toBe(false);
     expect(after.totals.messages).toBe(4);
+  });
+
+  it('saves a cold start straight away, so a crash does not repeat the whole first scan', async () => {
+    const { store, projects, stateDir } = await makeStore();
+    await store.start();
+    const offsets = async (): Promise<number> =>
+      Object.keys(
+        (JSON.parse(await readFile(join(stateDir, STATE_FILE), 'utf8')) as {
+          offsets: Record<string, number>;
+        }).offsets,
+      ).length;
+    await vi.waitFor(async () => expect(await offsets()).toBe(4), { timeout: 3000 });
+
+    // No stop(): what came after the last snapshot is read again, and counted once.
+    await appendFile(join(projects, MAIN_A), APPENDED);
+    await store.refresh();
+    const { store: second } = await makeStore({ projects, stateDir });
+    await second.start();
+    const all = { since: '2020-01-01T00:00:00.000Z', groupBy: 'project' } as const;
+    expect(second.query(all).totals.messages).toBe(5);
+    expect(second.query(all)).toEqual(store.query(all));
+  });
+
+  it('saves every five minutes, not every scan', async () => {
+    expect(SNAPSHOT_INTERVAL_MS).toBe(5 * 60_000);
+    const { store } = await makeStore();
+    await store.start();
+    await store.whenIdle();
+    const save = vi.spyOn(AggregateStore.prototype, 'save');
+    try {
+      await store.refresh();
+      expect(save).not.toHaveBeenCalled();
+    } finally {
+      save.mockRestore();
+    }
   });
 
   it('cold-starts when there is no snapshot at all', async () => {
