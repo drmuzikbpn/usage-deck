@@ -9,6 +9,7 @@ import {
   DEFAULT_DEBOUNCE_MS,
   DEFAULT_MIN_FLUSH_INTERVAL_MS,
   DEFAULT_SWEEP_MS,
+  MAX_CHANGED_PATHS,
   TranscriptWatcher,
 } from '../../src/spend/watcher.js';
 import { cleanupTempDirs, makeTempDir } from './helpers.js';
@@ -203,7 +204,135 @@ describe('TranscriptWatcher mid-scan queueing', () => {
   });
 });
 
+describe('TranscriptWatcher changed paths', () => {
+  async function watcherWith(options: { onFlush: (changed: ReadonlySet<string> | null) => void | Promise<void> }) {
+    vi.useFakeTimers();
+    const watcher = new TranscriptWatcher({ dir: join(await makeTempDir(), 'absent'), ...options });
+    await watcher.start();
+    return watcher;
+  }
+  function recorder() {
+    const flushes: (string[] | null)[] = [];
+    return { flushes, onFlush: (c: ReadonlySet<string> | null) => void flushes.push(c === null ? null : [...c]) };
+  }
+
+  it('hands a flush the distinct paths since the last one', async () => {
+    const { flushes, onFlush } = recorder();
+    const watcher = await watcherWith({ onFlush });
+    watcher.resume();
+    watcher.notify('p/a.jsonl');
+    watcher.notify('p/b.jsonl');
+    watcher.notify('p/a.jsonl');
+    vi.advanceTimersByTime(DEFAULT_DEBOUNCE_MS);
+    watcher.notify('p/c.jsonl');
+    vi.advanceTimersByTime(DEFAULT_MIN_FLUSH_INTERVAL_MS);
+    expect(flushes).toEqual([['p/a.jsonl', 'p/b.jsonl'], ['p/c.jsonl']]);
+    watcher.stop();
+  });
+
+  it('asks for everything when an event names no path', async () => {
+    const { flushes, onFlush } = recorder();
+    const watcher = await watcherWith({ onFlush });
+    watcher.resume();
+    watcher.notify('p/a.jsonl');
+    watcher.notify(null);
+    watcher.notify('p/b.jsonl');
+    vi.advanceTimersByTime(DEFAULT_DEBOUNCE_MS);
+    expect(flushes).toEqual([null]);
+    watcher.stop();
+  });
+
+  it('asks for everything rather than collect paths without limit', async () => {
+    const { flushes, onFlush } = recorder();
+    const watcher = await watcherWith({ onFlush });
+    for (let i = 0; i <= MAX_CHANGED_PATHS; i += 1) watcher.notify(`p/${i}.jsonl`);
+    watcher.resume();
+    expect(flushes).toEqual([null]);
+    watcher.stop();
+  });
+
+  it('asks for everything on the safety sweep, even one the flush floor holds back', async () => {
+    const { flushes, onFlush } = recorder();
+    const watcher = await watcherWith({ onFlush });
+    watcher.resume();
+    vi.advanceTimersByTime(DEFAULT_SWEEP_MS - DEFAULT_DEBOUNCE_MS - 1);
+    watcher.notify('p/a.jsonl');
+    vi.advanceTimersByTime(DEFAULT_DEBOUNCE_MS);
+    expect(flushes).toEqual([['p/a.jsonl']]);
+    vi.advanceTimersByTime(1); // the sweep, inside the floor
+    vi.advanceTimersByTime(DEFAULT_MIN_FLUSH_INTERVAL_MS);
+    expect(flushes).toEqual([['p/a.jsonl'], null]);
+    watcher.stop();
+  });
+
+  it('asks for everything after a flush that failed', async () => {
+    const seen: (string[] | null)[] = [];
+    const watcher = await watcherWith({
+      onFlush: async (changed) => {
+        seen.push(changed === null ? null : [...changed]);
+        if (seen.length === 1) throw new Error('scan failed');
+      },
+    });
+    watcher.resume();
+    watcher.notify('p/a.jsonl');
+    await vi.advanceTimersByTimeAsync(DEFAULT_DEBOUNCE_MS);
+    watcher.notify('p/b.jsonl');
+    await vi.advanceTimersByTimeAsync(DEFAULT_MIN_FLUSH_INTERVAL_MS);
+    expect(seen).toEqual([['p/a.jsonl'], null]);
+    watcher.stop();
+  });
+
+  it('keeps a path that changes while a flush is running for the next one', async () => {
+    const seen: (string[] | null)[] = [];
+    let release = (): void => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const watcher = await watcherWith({
+      onFlush: async (changed) => {
+        seen.push(changed === null ? null : [...changed]);
+        if (seen.length === 1) await gate;
+      },
+    });
+    watcher.resume();
+    watcher.notify('p/a.jsonl');
+    await vi.advanceTimersByTimeAsync(DEFAULT_DEBOUNCE_MS);
+    watcher.notify('p/a.jsonl');
+    await vi.advanceTimersByTimeAsync(DEFAULT_DEBOUNCE_MS);
+    release();
+    await vi.advanceTimersByTimeAsync(DEFAULT_MIN_FLUSH_INTERVAL_MS);
+    expect(seen).toEqual([['p/a.jsonl'], ['p/a.jsonl']]);
+    watcher.stop();
+  });
+});
+
 describe('TranscriptWatcher real filesystem events', () => {
+  it('names the file that was written, relative to the watched dir', async () => {
+    const dir = await makeTempDir();
+    if (!recursiveWatchSupported(dir)) return;
+    await mkdir(join(dir, 'proj', 'session'), { recursive: true });
+    const named = new Set<string>();
+    const watcher = new TranscriptWatcher({
+      dir,
+      debounceMs: 20,
+      minFlushIntervalMs: 0,
+      sweepMs: 60_000,
+      onFlush: (changed) => {
+        for (const path of changed ?? ['(everything)']) named.add(path);
+      },
+    });
+    await watcher.start();
+    watcher.resume();
+    const deadline = Date.now() + 8000;
+    for (let i = 0; !named.has('proj/session/a.jsonl') && Date.now() < deadline; i += 1) {
+      await writeFile(join(dir, 'proj', 'session', 'a.jsonl'), `{"n":${i}}\n`);
+      await new Promise((r) => setTimeout(r, 150));
+    }
+    watcher.stop();
+    expect([...named]).toContain('proj/session/a.jsonl');
+    expect([...named]).not.toContain('(everything)');
+  }, 10_000);
+
   it('flushes when a transcript is written under a nested dir', async () => {
     const dir = await makeTempDir();
     if (!recursiveWatchSupported(dir)) return; // platform without recursive fs.watch

@@ -2105,3 +2105,26 @@ walking all 40,000 aggregates.
   cheap, since each of them builds the list.
 
 **Tests:** `test/spend/store.test.ts`, `test/sessions/registry.test.ts`.
+
+### §23.70 A scan reads the files that changed (2026-11-22)
+
+Amends §23.7 and §23.38. With 27,500 transcripts, checking every file's size took about 0.5 s of
+CPU, and a busy machine did it every 5 s: about 80% of the daemon's main-thread time went to the
+results.
+
+- **The watcher says what changed.** A flush is handed the paths named since the last one, or
+  "everything": for an event with no name, more than `MAX_CHANGED_PATHS` (1,000) paths, a flush
+  after one that failed, and the 5-minute sweep.
+- **`scanChanged` reads those and leaves every other offset alone.** A named directory stands for
+  all transcripts under it: macOS reports a moved directory by its own name only. A named path
+  that is gone loses its offset. Paths that leave the tree are ignored.
+- **The whole tree is walked** at startup, on the sweep, on `refresh()`, after a truncated file
+  (§23.8) and after a scan that failed. Retention pruning and the `/health` file counts follow
+  those walks.
+- **Cost of a missed event.** macOS can drop events without saying so; tokens written then are
+  counted by the next sweep, at most 5 minutes later. A read of an old file can hold rows past
+  retention until the same sweep.
+- **Measured** side by side for 90 s on one live tree, 18 scans each: 20.6 s of CPU before, 2.7 s
+  after, with the same events and totals. Event names checked on macOS and on Linux.
+
+**Tests:** `test/spend/scanner.test.ts`, `test/spend/watcher.test.ts`, `test/spend/index.test.ts`.

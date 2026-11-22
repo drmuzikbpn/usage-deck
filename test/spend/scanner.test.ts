@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Even Seal Productions
-import { appendFile, open, stat, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, open, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { CHUNK_SIZE, scanAll, scanFile, walkTranscripts } from '../../src/spend/scanner.js';
+import { CHUNK_SIZE, scanAll, scanChanged, scanFile, walkTranscripts } from '../../src/spend/scanner.js';
 import type { UsageEvent } from '../../src/spend/types.js';
 import {
   cleanupTempDirs,
@@ -326,6 +326,98 @@ describe('scanAll', () => {
     const seen: number[] = [];
     await scanAll(projects, {}, () => {}, { onProgress: (p) => seen.push(p.filesDone) });
     expect(seen).toEqual([1, 2, 3, 4]);
+  });
+});
+
+describe('scanChanged', () => {
+  const line = (id: string): string =>
+    `${JSON.stringify({
+      type: 'assistant',
+      timestamp: '2026-09-13T13:00:00.000Z',
+      cwd: '/home/dev/alpha',
+      sessionId: SESSION_A,
+      requestId: `req_${id}`,
+      message: { id: `msg_${id}`, model: 'claude-opus-5', role: 'assistant', usage: { input_tokens: 1, output_tokens: 1 } },
+    })}\n`;
+
+  it('reads the named files and no others, keeping every other offset', async () => {
+    const projects = await copyFixtures();
+    const first = await scanAll(projects, {}, () => {});
+    await appendFile(join(projects, MAIN_A), line('named'));
+    await appendFile(join(projects, SUB_A), line('unnamed'));
+
+    const { events, sink } = collector();
+    const res = await scanChanged(projects, first.offsets, [MAIN_A], sink);
+    expect(events.map((e) => e.dedupKey)).toEqual(['msg_named:req_named']);
+    expect(res.filesTotal).toBe(1);
+    expect(res.filesRead).toBe(1);
+    expect(res.offsets).toEqual({ ...first.offsets, [MAIN_A]: (await stat(join(projects, MAIN_A))).size });
+
+    // The one it was not told about is still there for the next full walk.
+    const full = collector();
+    await scanAll(projects, res.offsets, full.sink);
+    expect(full.events.map((e) => e.dedupKey)).toEqual(['msg_unnamed:req_unnamed']);
+  });
+
+  it('tags a new file the way a full walk does', async () => {
+    const projects = await copyFixtures();
+    const rel = `${PROJECT_A}/${SESSION_A}/subagents/agent-new.jsonl`;
+    await writeFile(join(projects, rel), line('new'));
+    const { events, sink } = collector();
+    await scanChanged(projects, {}, [rel], sink);
+    expect(events).toMatchObject([{ projectKey: PROJECT_A, topLevel: false }]);
+  });
+
+  it('reads everything under a directory it is named', async () => {
+    // A moved directory is reported by its own name only (macOS), as is a new one whose files
+    // landed before the watch did (Linux).
+    const projects = await copyFixtures();
+    const first = await scanAll(projects, {}, () => {});
+    await rename(join(projects, PROJECT_A), join(projects, 'moved'));
+    const res = await scanChanged(projects, first.offsets, [PROJECT_A, 'moved'], () => {});
+    expect(res.filesRead).toBe(3);
+    expect(res.offsets[`moved/${SESSION_A}.jsonl`]).toBe(first.offsets[MAIN_A]);
+  });
+
+  it('forgets a deleted file, so one recreated under its name is read from the start', async () => {
+    const projects = await copyFixtures();
+    const first = await scanAll(projects, {}, () => {});
+    await rm(join(projects, MAIN_A));
+    const res = await scanChanged(projects, first.offsets, [MAIN_A], () => {});
+    expect(MAIN_A in res.offsets).toBe(false);
+    expect(Object.keys(res.offsets)).toHaveLength(3);
+    expect(res.restarted).toEqual([]);
+  });
+
+  it('reads a file once when both it and its directory are named', async () => {
+    const projects = await copyFixtures();
+    const res = await scanChanged(projects, {}, [PROJECT_A, MAIN_A, MAIN_A], () => {});
+    expect(res.filesTotal).toBe(3);
+    expect(res.filesRead).toBe(3);
+  });
+
+  it('reports truncated files', async () => {
+    const projects = await copyFixtures();
+    const first = await scanAll(projects, {}, () => {});
+    await writeFile(join(projects, MAIN_A), '');
+    const res = await scanChanged(projects, first.offsets, [MAIN_A], () => {});
+    expect(res.restarted).toEqual([MAIN_A]);
+  });
+
+  it('ignores what a full walk would: other extensions, stray files, paths outside the tree', async () => {
+    const projects = await copyFixtures();
+    await writeFile(join(projects, 'stray.jsonl'), line('stray'));
+    await writeFile(join(projects, PROJECT_A, 'notes.txt'), line('txt'));
+    await mkdir(join(projects, '..', 'outside'), { recursive: true });
+    await writeFile(join(projects, '..', 'outside', 'x.jsonl'), line('outside'));
+    const res = await scanChanged(
+      projects,
+      {},
+      ['stray.jsonl', `${PROJECT_A}/notes.txt`, '../outside/x.jsonl', join(projects, MAIN_A), ''],
+      () => {},
+    );
+    expect(res.filesTotal).toBe(0);
+    expect(res.offsets).toEqual({});
   });
 });
 

@@ -9,7 +9,7 @@
  * chunks so HTTP stays responsive during the initial scan.
  */
 
-import { open, readdir, stat } from 'node:fs/promises';
+import { lstat, open, readdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
 
@@ -253,6 +253,28 @@ export async function scanFile(
 
 /** Every `*.jsonl` under `projectsDir`, at any depth (§23.4). */
 export async function walkTranscripts(projectsDir: string): Promise<TranscriptFile[]> {
+  return sorted(await walkUnder(projectsDir, ''));
+}
+
+function sorted(files: TranscriptFile[]): TranscriptFile[] {
+  return files.sort((a, b) => (a.relPath < b.relPath ? -1 : a.relPath > b.relPath ? 1 : 0));
+}
+
+/** What a relative path is to the scanner, or null for one it does not read. */
+function transcriptAt(projectsDir: string, relPath: string, size: number): TranscriptFile | null {
+  const segments = relPath.split('/');
+  // A stray *.jsonl directly in projects/ belongs to no project.
+  if (segments.length < 2 || !relPath.endsWith('.jsonl')) return null;
+  return {
+    path: join(projectsDir, relPath),
+    relPath,
+    projectKey: segments[0] ?? '',
+    topLevel: segments.length === 2,
+    size,
+  };
+}
+
+async function walkUnder(projectsDir: string, relDir: string): Promise<TranscriptFile[]> {
   const found: TranscriptFile[] = [];
 
   const walk = async (dir: string, relative: string): Promise<void> => {
@@ -269,29 +291,25 @@ export async function walkTranscripts(projectsDir: string): Promise<TranscriptFi
         await walk(abs, rel);
         continue;
       }
-      if (!entry.isFile() || !entry.name.endsWith('.jsonl')) continue;
-      const segments = rel.split('/');
-      const projectKey = segments[0] ?? '';
-      if (segments.length < 2) continue; // a stray *.jsonl directly in projects/
+      if (!entry.isFile() || transcriptAt(projectsDir, rel, 0) === null) continue;
       let size: number;
       try {
         size = (await stat(abs)).size;
       } catch {
         continue;
       }
-      found.push({
-        path: abs,
-        relPath: rel,
-        projectKey,
-        topLevel: segments.length === 2,
-        size,
-      });
+      const file = transcriptAt(projectsDir, rel, size);
+      if (file !== null) found.push(file);
     }
   };
 
-  await walk(projectsDir, '');
-  found.sort((a, b) => (a.relPath < b.relPath ? -1 : a.relPath > b.relPath ? 1 : 0));
+  await walk(join(projectsDir, relDir), relDir);
   return found;
+}
+
+/** A path the watcher reported, if it stays inside the tree. */
+function insideTree(relPath: string): boolean {
+  return relPath.split('/').every((s) => s !== '' && s !== '.' && s !== '..');
 }
 
 /**
@@ -305,6 +323,60 @@ export async function scanAll(
   options: ScanAllOptions = {},
 ): Promise<ScanAllResult> {
   const files = await walkTranscripts(projectsDir);
+  const result = await scanFiles(files, offsets, sink, options);
+
+  // Files that disappeared since the last pass must not keep stale offsets around.
+  const live = new Set(files.map((f) => f.relPath));
+  for (const key of Object.keys(result.offsets)) {
+    if (!live.has(key)) delete result.offsets[key];
+  }
+  return result;
+}
+
+/**
+ * Scan only `changed` (paths relative to the projects dir, as the watcher reports them),
+ * leaving every other offset alone (§23.70). A directory stands for everything under it: a
+ * moved one is reported by its own name, and so is a new one whose files beat the watch.
+ *
+ * The totals in the result cover the named files only.
+ */
+export async function scanChanged(
+  projectsDir: string,
+  offsets: Readonly<Record<string, number>>,
+  changed: Iterable<string>,
+  sink: UsageSink,
+  options: ScanAllOptions = {},
+): Promise<ScanAllResult> {
+  const files = new Map<string, TranscriptFile>();
+  const gone: string[] = [];
+  for (const relPath of new Set(changed)) {
+    if (!insideTree(relPath)) continue;
+    let info;
+    try {
+      info = await lstat(join(projectsDir, relPath));
+    } catch {
+      gone.push(relPath);
+      continue;
+    }
+    if (info.isDirectory()) {
+      for (const file of await walkUnder(projectsDir, relPath)) files.set(file.relPath, file);
+    } else if (info.isFile()) {
+      const file = transcriptAt(projectsDir, relPath, info.size);
+      if (file !== null) files.set(relPath, file);
+    }
+  }
+
+  const result = await scanFiles(sorted([...files.values()]), offsets, sink, options);
+  for (const relPath of gone) delete result.offsets[relPath];
+  return result;
+}
+
+async function scanFiles(
+  files: readonly TranscriptFile[],
+  offsets: Readonly<Record<string, number>>,
+  sink: UsageSink,
+  options: ScanAllOptions,
+): Promise<ScanAllResult> {
   const next: Record<string, number> = { ...offsets };
   const restarted: string[] = [];
   const bytesTotal = files.reduce((sum, f) => sum + f.size, 0);
@@ -367,11 +439,5 @@ export async function scanAll(
   await Promise.all(
     Array.from({ length: Math.min(concurrency, files.length) }, () => worker()),
   );
-
-  // Files that disappeared since the last pass must not keep stale offsets around.
-  const live = new Set(files.map((f) => f.relPath));
-  for (const key of Object.keys(next)) {
-    if (!live.has(key)) delete next[key];
-  }
   return result;
 }
