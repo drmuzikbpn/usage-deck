@@ -160,6 +160,11 @@ export class AggregateStore {
   readonly #retentionDays: number;
 
   #aggregates = new Map<string, TokenTotals>();
+  /**
+   * `#aggregates` summed per session, so one session's totals never cost a walk over every
+   * aggregate (§23.69). Derived: kept by `ingest`, rebuilt by `load` and `prune`, never saved.
+   */
+  #sessionTotals = new Map<string, TokenTotals>();
   /** dedup key → UTC day, so retention can prune the set without a scan per day. */
   #dedup = new Map<string, string>();
   #sessions = new Map<string, SessionMeta>();
@@ -208,6 +213,7 @@ export class AggregateStore {
       this.#aggregates.set(key, totals);
     }
     addInto(totals, event);
+    addInto(this.#sessionTotalsEntry(event.sessionId), event);
 
     this.#touchSession(event);
     this.#touchProject(event);
@@ -219,6 +225,22 @@ export class AggregateStore {
     let counted = 0;
     for (const event of events) if (this.ingest(event)) counted += 1;
     return counted;
+  }
+
+  #sessionTotalsEntry(sessionId: string): TokenTotals {
+    let totals = this.#sessionTotals.get(sessionId);
+    if (!totals) {
+      totals = emptyTotals();
+      this.#sessionTotals.set(sessionId, totals);
+    }
+    return totals;
+  }
+
+  #rebuildSessionTotals(): void {
+    this.#sessionTotals = new Map();
+    for (const [key, value] of this.#aggregates) {
+      addTotals(this.#sessionTotalsEntry(splitAggKey(key).sessionId), value);
+    }
   }
 
   #touchSession(event: UsageEvent): void {
@@ -283,6 +305,7 @@ export class AggregateStore {
       if (day < cutoffDay) this.#dedup.delete(key);
     }
     if (removed > 0) {
+      this.#rebuildSessionTotals();
       this.#dropOrphanedMeta();
       this.#dirty = true;
     }
@@ -360,14 +383,8 @@ export class AggregateStore {
   }
 
   sessionTotals(sessionId: string): TokenTotals | null {
-    let found = false;
-    const totals = emptyTotals();
-    for (const [key, value] of this.#aggregates) {
-      if (splitAggKey(key).sessionId !== sessionId) continue;
-      found = true;
-      addTotals(totals, value);
-    }
-    return found ? totals : null;
+    const totals = this.#sessionTotals.get(sessionId);
+    return totals ? { ...totals } : null;
   }
 
   /** W3 §17.2: every session the transcripts know about, for the sessions back-fill. */
@@ -445,6 +462,8 @@ export class AggregateStore {
         messages: m,
       });
     }
+
+    this.#rebuildSessionTotals();
 
     this.#dedup = new Map();
     for (const packed of parsed.dedup ?? []) {
