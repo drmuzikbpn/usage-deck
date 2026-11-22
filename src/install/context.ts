@@ -38,6 +38,9 @@ export interface InstallIO {
   uid?: number;
   /** `claude-usage pair`, offered at the end of an interactive install (§23.48). */
   pair?: () => Promise<number>;
+  /** §23.73: the menu-bar app and Homebrew, if they are there; real lookups by default. */
+  findMenuBarApp?: () => string | null;
+  findBrew?: () => string | null;
   /** §23.58: make an unsupervised running daemon take a rotated token; real one by default. */
   adoptToken?: (configDir: string) => Promise<{ state: 'no-daemon' } | { state: 'adopted'; pid: number } | { state: 'failed'; pid: number; why: string }>;
 }

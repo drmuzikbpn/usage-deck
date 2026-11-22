@@ -67,6 +67,7 @@ function bed(opts: { platform?: string; settings?: string; healthy?: boolean; pr
     sleep: () => Promise.resolve(),
     randomToken: () => TOKEN,
     isTTY: opts.isTTY ?? false,
+    findMenuBarApp: () => '/Applications/SwiftBar.app',
     ...(opts.prompt === undefined ? {} : { prompt: opts.prompt }),
   };
   b.run = (argv) => runInstall(argv, b.io);
@@ -467,3 +468,37 @@ describe('MCP fallback', () => {
   });
 });
 
+
+describe('the menu bar app', () => {
+  it('is offered by an interactive install when it is missing, before pairing', async () => {
+    const scripted = scriptedPrompter([true, true, true, false, true, false, false]);
+    const b = bed({ settings: 'settings-empty.json', prompt: scripted.prompt, isTTY: true });
+    b.io.findMenuBarApp = () => null;
+    b.io.findBrew = () => '/opt/homebrew/bin/brew';
+    expect(await b.run([])).toBe(0);
+    expect(scripted.questions.slice(-2)).toEqual([
+      "SwiftBar isn't installed. Install it with Homebrew to see your limits in the menu bar?",
+      'Open the pairing page now?',
+    ]);
+    expect(b.exec.lines().join('\n')).not.toContain('swiftbar');
+  });
+
+  it('is never installed by --yes, which only says how', async () => {
+    const b = bed({ settings: 'settings-empty.json' });
+    b.io.findMenuBarApp = () => null;
+    b.io.findBrew = () => '/opt/homebrew/bin/brew';
+    expect(await b.run(['--yes'])).toBe(0);
+    expect(b.exec.lines().join('\n')).not.toContain('swiftbar');
+    expect(b.out).toContain('brew install --cask swiftbar');
+  });
+
+  it('is never installed by --yes even when a prompt is available', async () => {
+    const scripted = scriptedPrompter([true, true]);
+    const b = bed({ settings: 'settings-empty.json', prompt: scripted.prompt, isTTY: true });
+    b.io.findMenuBarApp = () => null;
+    b.io.findBrew = () => '/opt/homebrew/bin/brew';
+    expect(await b.run(['--yes'])).toBe(0);
+    expect(scripted.questions).toEqual([]);
+    expect(b.exec.lines().join('\n')).not.toContain('swiftbar');
+  });
+});

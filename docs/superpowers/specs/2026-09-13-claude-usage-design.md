@@ -2168,3 +2168,23 @@ is not recorded.
   after.
 
 **Tests:** `test/config.test.ts`, `test/daemon.test.ts`, `test/limits-observed.test.ts`.
+
+### §23.73 Install offers SwiftBar when it is missing (2026-11-22)
+
+Extends §8 and §23.66. The menu-bar item needs SwiftBar or xbar, and `install` never mentioned
+either, so the item was found only by reading the guide.
+
+- **macOS only, after the status table, before the pairing offer.** Install looks for
+  `SwiftBar.app`, then `xbar.app`, in `/Applications` and `~/Applications`. `menubar --install`
+  uses the same lookup for the login item.
+- **Neither there:** an interactive install asks, default **no**, because it is another project's
+  app. With Homebrew (`/opt/homebrew/bin/brew` or `/usr/local/bin/brew`, never from the PATH), yes
+  runs `brew install --cask swiftbar`, opens SwiftBar, and offers to add the item through
+  `menubar --install` once the user has picked a plugin folder. Install never writes SwiftBar's
+  preferences. Without Homebrew, yes opens SwiftBar's download page.
+- **`--yes` never installs or opens it**; it prints one line saying how.
+- **An app but no plugin of ours:** one line naming `claude-usage menubar --install`, no question.
+  Both there: nothing.
+- **Nothing here fails the install.** A failed Homebrew run prints the command to try by hand.
+
+**Tests:** `test/install/menu-bar.test.ts`, `test/install/install.test.ts`.

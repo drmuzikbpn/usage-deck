@@ -313,7 +313,8 @@ async function swiftBarPluginDir(exec: ExecRunner): Promise<string | null> {
   return r.code === 0 && isAbsolute(dir) ? dir : null;
 }
 
-function recordedPlugin(configDir: string): string | null {
+/** Where `--install` last put the plugin, whether or not it is still there. */
+export function recordedPlugin(configDir: string): string | null {
   try {
     return readFileSync(join(configDir, PLUGIN_RECORD), 'utf8').trim();
   } catch {
@@ -340,8 +341,15 @@ function flagValue(argv: readonly string[], name: string): string | undefined {
   return i >= 0 ? argv[i + 1] : undefined;
 }
 
+/** SwiftBar or xbar, in the system's or the user's own Applications folder. */
+export function findMenuBarApp(env: NodeJS.ProcessEnv = process.env, systemDir = '/Applications'): string | null {
+  const home = env['HOME'];
+  const dirs = home === undefined || !isAbsolute(home) ? [systemDir] : [systemDir, join(home, 'Applications')];
+  const apps = ['SwiftBar.app', 'xbar.app'].flatMap((name) => dirs.map((dir) => join(dir, name)));
+  return apps.find((path) => existsSync(path)) ?? null;
+}
+
 /** `claude-usage menubar [--install [--dir <d>] | --uninstall | --plugin <path>]`. */
-const MENU_BAR_APPS = ['/Applications/SwiftBar.app', '/Applications/xbar.app'];
 
 /** Each line takes the app's path or name as argv, so neither is parsed as AppleScript. */
 const LOGIN_ITEM_EXISTS = ['on run argv', 'tell application "System Events" to return exists login item (item 1 of argv)', 'end run'];
@@ -358,7 +366,7 @@ const osa = (lines: readonly string[], arg: string): string[] => [...lines.flatM
  */
 async function offerLoginItem(argv: readonly string[], io: MenubarIO): Promise<void> {
   if (argv.includes('--no-login-item')) return;
-  const app = io.menuBarApp !== undefined ? io.menuBarApp : (MENU_BAR_APPS.find((path) => existsSync(path)) ?? null);
+  const app = io.menuBarApp !== undefined ? io.menuBarApp : findMenuBarApp(io.env ?? process.env);
   if (app === null) return;
   const name = basename(app, '.app');
   const requested = argv.includes('--login-item');
