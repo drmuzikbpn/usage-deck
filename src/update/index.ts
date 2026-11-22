@@ -358,6 +358,9 @@ export interface UpdateCliIo {
   updater?: UpdaterHandle;
   /** Session ids the running daemon reports as hard-frozen; injected in tests (§23.22). */
   hardFrozenSessions?: () => Promise<string[]>;
+  /** §23.73: injected in tests; the real platform and lookup by default. */
+  platform?: string;
+  findMenuBarApp?: () => string | null;
 }
 
 /**
@@ -468,6 +471,11 @@ export async function runUpdateCli(cmd: string, argv: readonly string[], io: Upd
   if (status.state === 'ready') {
     io.stdout(`installed: ${currentVersion(env) ?? 'unknown'}\n`);
     io.stdout(`${await (io.restartService ?? (() => restartInstalledService(env)))()}\n`);
+  }
+  // §23.73: an update cannot ask, so name the command that can.
+  if ((io.platform ?? process.platform) === 'darwin') {
+    const find = io.findMenuBarApp ?? (await import('../menubar.js')).findMenuBarApp.bind(null, env);
+    if (find() === null) io.stdout("menu bar: SwiftBar isn't installed (optional); to add it, run claude-usage menubar --install\n");
   }
   return 0;
 }

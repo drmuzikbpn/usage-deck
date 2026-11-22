@@ -486,6 +486,82 @@ describe('menubar --install / --uninstall', () => {
     expect(c.err()).toContain('brew install swiftbar');
   });
 
+  describe('with no menu bar app installed', () => {
+    const BREW = '/opt/homebrew/bin/brew';
+    const install = async (
+      answers: boolean[] | null,
+      opts: { platform?: string; app?: string | null; argv?: string[]; folder?: boolean; brewCode?: number } = {},
+    ) => {
+      const dir = mkdtempSync(join(tmpdir(), 'swiftbar-'));
+      const questions: string[] = [];
+      const calls: string[] = [];
+      const c = capture();
+      const code = await runMenubar(['--install', ...(opts.argv ?? [])], {
+        ...c.io,
+        configDir: tempConfigDir(),
+        nodePath: '/n',
+        binPath: '/b',
+        platform: opts.platform ?? 'darwin',
+        menuBarApp: opts.app === undefined ? null : opts.app,
+        findBrew: () => BREW,
+        ...(answers === null ? {} : { confirm: async (q: string) => (questions.push(q), answers[questions.length - 1] ?? false) }),
+        exec: async (file, args) => {
+          calls.push([file, ...args].join(' '));
+          if (file === BREW) return { code: opts.brewCode ?? 0, stdout: '', stderr: '' };
+          if (file !== '/usr/bin/defaults') return { code: 0, stdout: '', stderr: '' };
+          return opts.folder === false ? { code: 1, stdout: '', stderr: '' } : { code: 0, stdout: `${dir}\n`, stderr: '' };
+        },
+      });
+      return { code, questions, calls, dir, out: c.out(), err: c.err() };
+    };
+
+    it('offers SwiftBar, then adds the item to the folder picked', async () => {
+      const r = await install([true, true]);
+      expect(r.code).toBe(0);
+      expect(r.questions).toHaveLength(2);
+      expect(r.questions[0]).toContain("SwiftBar isn't installed. Install it with Homebrew");
+      expect(r.calls.slice(0, 2)).toEqual([`${BREW} install --cask swiftbar`, '/usr/bin/open -a SwiftBar']);
+      expect(existsSync(join(r.dir, PLUGIN_FILE))).toBe(true);
+    });
+
+    it('asks once even when the app still cannot be found afterwards and no folder was picked', async () => {
+      const r = await install([true, true, true, true], { folder: false });
+      expect(r.code).toBe(1);
+      expect(r.questions).toHaveLength(2);
+      expect(r.err).toContain('no plugin folder yet');
+    });
+
+    it('a "no" adds nothing and says where else to look', async () => {
+      const r = await install([false]);
+      expect(r.code).toBe(1);
+      expect(r.calls).toEqual([]);
+      expect(existsSync(join(r.dir, PLUGIN_FILE))).toBe(false);
+      expect(r.out).toContain('brew install --cask swiftbar');
+      expect(r.err).toContain('--dir');
+    });
+
+    it('a failed Homebrew install adds nothing', async () => {
+      const r = await install([true], { brewCode: 1 });
+      expect(r.code).toBe(1);
+      expect(existsSync(join(r.dir, PLUGIN_FILE))).toBe(false);
+    });
+
+    it.each([
+      ['--dir names a folder', { argv: ['--dir', mkdtempSync(join(tmpdir(), 'swiftbar-'))] }],
+      ['the app is there', { app: '/Applications/SwiftBar.app' }],
+      ['it is not macOS', { platform: 'linux' }],
+    ])('does not offer it when %s', async (_name, opts) => {
+      const r = await install([false, false], opts);
+      expect(r.code).toBe(0);
+      expect(r.questions.join()).not.toContain("isn't installed");
+    });
+
+    it('with nobody at the terminal, installs no app', async () => {
+      const r = await install(null);
+      expect(r.calls.join()).not.toContain('brew');
+    });
+  });
+
   it("uses SwiftBar's configured plugin folder", async () => {
     const dir = mkdtempSync(join(tmpdir(), 'swiftbar-'));
     const calls: string[][] = [];

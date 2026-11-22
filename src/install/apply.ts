@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Even Seal Productions
 import { versionDir } from '../paths.js';
-import { buildUnit } from '../service/index.js';
+import { buildUnit, defaultExec } from '../service/index.js';
 import { addMcpServer } from './claude-json.js';
 import {
   asLaunchd,
@@ -30,6 +30,8 @@ import { installVersion } from './versions.js';
 import { ensureRuntimeDeps } from './deps.js';
 import { describePathLink, linkOnPath } from './path-link.js';
 import { pairingHint } from './pair-hint.js';
+import { findBrew, offerMenuBar } from './menu-bar.js';
+import { findMenuBarApp } from '../menubar.js';
 
 /** `claude-usage install` (§8). Returns the process exit code; never calls `process.exit`. */
 export async function runInstall(argv: readonly string[], io: InstallIO): Promise<number> {
@@ -200,6 +202,21 @@ export async function runInstall(argv: readonly string[], io: InstallIO): Promis
 
   io.stdout(`\n${await renderStatusTable(ctx, chosen, healthy, config.port, feed)}`);
   for (const note of notes) io.stdout(`\nnote: ${note}\n`);
+
+  // §23.73: the menu-bar item needs SwiftBar (or xbar).
+  await offerMenuBar({
+    platform: ctx.platform,
+    configDir: ctx.configDir,
+    env: ctx.env,
+    nodePath: ctx.nodePath,
+    binPath: ctx.binPath,
+    exec: ctx.exec ?? defaultExec,
+    stdout: io.stdout,
+    stderr: io.stderr,
+    findApp: io.findMenuBarApp ?? (() => findMenuBarApp(ctx.env)),
+    findBrew: io.findBrew ?? findBrew,
+    ...(interactive && ask !== undefined ? { ask } : {}),
+  });
 
   // §23.48: offer the pairing page — only when there is something a phone could reach.
   const reachable = config.bind.some((entry) => !isLoopbackAddress(entry));

@@ -247,3 +247,40 @@ describe('update --force and the hard-freeze guard (§23.22)', () => {
     expect(ran).toBe(true);
   });
 });
+
+describe('update mentions the menu bar app when it is missing (§23.73)', () => {
+  const run = async (
+    argv: string[],
+    over: { platform?: string; app?: string | null; state?: string } = {},
+  ): Promise<{ code: number; out: string }> => {
+    let out = '';
+    const code = await runUpdateCli('update', argv, {
+      stdout: (t) => (out += t),
+      stderr: () => undefined,
+      configDir: dirs.make(),
+      restartService: async () => 'service: restarted (test)',
+      hardFrozenSessions: async () => [],
+      platform: over.platform ?? 'darwin',
+      findMenuBarApp: () => (over.app === undefined ? null : over.app),
+      updater: {
+        checkOnly: async () => ({ current: '1.0.0', available: null, error: null }),
+        runOnce: async () => ({ state: over.state ?? 'idle', current: '1.0.0', available: null, deferredReason: null, channel: 'stable' }),
+      } as never,
+    });
+    return { code, out };
+  };
+  const HINT = 'claude-usage menubar --install';
+
+  it.each(['idle', 'ready'])('one line on macOS, state %s', async (state) => {
+    const r = await run([], { state });
+    expect(r.code).toBe(0);
+    expect(r.out.split('\n').filter((l) => l.includes(HINT))).toHaveLength(1);
+  });
+
+  it('nothing when an app is there, off macOS, for --check, or after a failed update', async () => {
+    expect((await run([], { app: '/Applications/xbar.app' })).out).not.toContain(HINT);
+    expect((await run([], { platform: 'linux' })).out).not.toContain(HINT);
+    expect((await run(['--check'])).out).not.toContain(HINT);
+    expect((await run([], { state: 'error' })).out).not.toContain(HINT);
+  });
+});

@@ -70,7 +70,8 @@ node bin/claude-usage install
 ```
 
 `install` explains each change and asks before making it. It starts the background service,
-adds the Claude Code hook and MCP server, and puts `claude-usage` on your PATH. You can delete
+adds the Claude Code hook and MCP server, and puts `claude-usage` on your PATH. On a Mac without
+SwiftBar it offers to install it, for the menu bar item. You can delete
 the checkout afterwards: the service keeps itself up to date from signed GitHub releases.
 
 Check it worked:
