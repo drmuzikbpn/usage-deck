@@ -84,12 +84,14 @@ Re-run `node bin/claude-usage install --yes` — it must be idempotent:
 `hooks:   already registered`, `package: … (already installed)`, no second `.bak`, and
 `git diff`-equivalent stability of `settings.json` (compare a copy you took before).
 
-`KeepAlive { SuccessfulExit: false }` check — the daemon must come back after a crash but
-**not** after a clean exit:
+`KeepAlive { SuccessfulExit: false }` check — the daemon must come back after a crash and
+after a stray SIGTERM (it exits 143, §23.74), but **not** after `configure service off`:
 
 ```bash
 kill -9 $(cat ~/.config/claude-usage/daemon.json | python3 -c 'import sys,json;print(json.load(sys.stdin)["pid"])')
 sleep 3 && curl -s localhost:47291/health >/dev/null && echo "relaunched ✓"
+kill -TERM $(cat ~/.config/claude-usage/daemon.json | python3 -c 'import sys,json;print(json.load(sys.stdin)["pid"])')
+sleep 12 && curl -s localhost:47291/health >/dev/null && echo "relaunched after SIGTERM ✓"   # launchd throttles to 10 s
 ```
 
 Uninstall and check the round-trip:
@@ -150,6 +152,7 @@ systemctl --user status claude-usage --no-pager
 cat ~/.config/systemd/user/claude-usage.service
 #   ExecStart=<abs node> <…>/current/bin/claude-usage serve
 #   Environment=PATH=…   Restart=on-failure   RestartSec=5
+#   SuccessExitStatus=143   RestartForceExitStatus=143      (§23.74)
 #   [Install] WantedBy=default.target
 
 loginctl show-user "$USER" | grep Linger      # Linger=yes
@@ -274,6 +277,7 @@ stopped:
 ```bash
 node bin/claude-usage pause session:<id> --hard
 launchctl kill SIGTERM gui/$UID/com.github.drmuzikbpn.claude-usage    # or: systemctl --user stop claude-usage
+# (launchd relaunches it after a SIGTERM, §23.74 — the thaw happens before it exits)
 ps -o pid=,stat= -p <pid>      # NOT T — shutdown SIGCONTed it
 ```
 

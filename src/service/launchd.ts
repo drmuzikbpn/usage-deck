@@ -10,6 +10,7 @@ import {
   LAUNCHD_LABEL,
   LOG_TRUNCATE_BYTES,
   tailLines,
+  SIGTERM_EXIT_CODE,
   UPDATE_RESTART_EXIT_CODE,
   type ExecRunner,
   type ServiceManager,
@@ -56,8 +57,9 @@ ${envKeys.map((k) => `\t\t<key>${xml(k)}</key>\n\t\t<string>${xml(unit.env[k] ??
 \t</dict>
 \t<key>RunAtLoad</key>
 \t<true/>
-\t<!-- Exit 0 means "stay down" (configure service off); the auto-updater asks for a
-\t     relaunch by exiting ${String(UPDATE_RESTART_EXIT_CODE)}, mirroring systemd's Restart=on-failure. -->
+\t<!-- Exit 0 means "stay down"; the auto-updater asks for a relaunch by
+\t     exiting ${String(UPDATE_RESTART_EXIT_CODE)}, mirroring systemd's Restart=on-failure, and a SIGTERM exits ${String(SIGTERM_EXIT_CODE)}
+\t     so a stray one is relaunched. configure service off boots the job out first. -->
 \t<key>KeepAlive</key>
 \t<dict>
 \t\t<key>SuccessfulExit</key>

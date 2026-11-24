@@ -139,9 +139,9 @@ Uninstall: `claude-usage uninstall` (add `--purge` to delete config and state to
 | `~/.local/share/claude-usage/versions/<version>/` | a copy of the package | — |
 | `~/.local/share/claude-usage/current` | symlink → the active version; the unit runs out of this | — |
 | `~/.local/bin/claude-usage` | symlink → `current/bin/claude-usage`, so `claude-usage` is on your PATH (`$XDG_BIN_HOME` if set; never overwrites an existing file) | — |
-| `~/Library/LaunchAgents/com.github.drmuzikbpn.claude-usage.plist` (macOS) | LaunchAgent, `RunAtLoad`, `KeepAlive: { SuccessfulExit: false }` | `0644` |
+| `~/Library/LaunchAgents/com.github.drmuzikbpn.claude-usage.plist` (macOS) | LaunchAgent, `RunAtLoad`, `KeepAlive: { SuccessfulExit: false }` (a stray SIGTERM exits 143 and is relaunched) | `0644` |
 | `~/Library/Logs/claude-usage/daemon.{out,err}.log` (macOS) | daemon stdout/stderr | dir `0700` |
-| `~/.config/systemd/user/claude-usage.service` (Linux) | user unit, `Restart=on-failure`, `WantedBy=default.target`; logs go to the journal | `0644` |
+| `~/.config/systemd/user/claude-usage.service` (Linux) | user unit, `Restart=on-failure`, `SuccessExitStatus=143`, `RestartForceExitStatus=143`, `WantedBy=default.target`; logs go to the journal | `0644` |
 | `~/.claude/settings.json` | **merge-only**: four hook groups, and `statusLine` only when you have none | mode preserved |
 | `~/.claude/settings.json.claude-usage.bak` | one-time backup, written once and never overwritten | copies the source mode |
 | `~/.claude.json` | `mcpServers["claude-usage"]`, written by `claude mcp add --scope user` | `0600` |

@@ -4,7 +4,14 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { LaunchdService } from '../../src/service/launchd.js';
-import { buildUnit, LAUNCHD_LABEL, LOG_TRUNCATE_BYTES, ServiceError, UPDATE_RESTART_EXIT_CODE } from '../../src/service/index.js';
+import {
+  buildUnit,
+  LAUNCHD_LABEL,
+  LOG_TRUNCATE_BYTES,
+  ServiceError,
+  SIGTERM_EXIT_CODE,
+  UPDATE_RESTART_EXIT_CODE,
+} from '../../src/service/index.js';
 import { cleanupAllTempHomes, fakeExec, tempHome } from '../install/helpers.js';
 
 afterAll(cleanupAllTempHomes);
@@ -50,6 +57,8 @@ describe('plist', () => {
     // `KeepAlive: true` would relaunch after `configure service off`.
     expect(plist).not.toMatch(/<key>KeepAlive<\/key>\n\t<true\/>/);
     expect(plist).toContain(`exiting ${String(UPDATE_RESTART_EXIT_CODE)}`);
+    // §23.74: a SIGTERM exits non-zero too, so a stray one is relaunched.
+    expect(plist).toContain(`a SIGTERM exits ${String(SIGTERM_EXIT_CODE)}\n`);
   });
 
   it('omits XDG variables that are not set', async () => {

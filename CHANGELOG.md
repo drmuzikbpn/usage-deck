@@ -4,6 +4,12 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+### Fixed (service)
+- A stray SIGTERM no longer keeps the daemon down. `serve` exits 143 after one, so launchd and
+  systemd relaunch it; `configure service off`, `uninstall`, shutdown and logout still stop it,
+  because they stop it through the service manager. On Linux, run `install` again to get the
+  unit's new `SuccessExitStatus=`/`RestartForceExitStatus=` lines (§23.74, issue #101).
+
 ### Fixed (limits)
 - A plan with no 5-hour window says so instead of leaving a gap. Anthropic no longer reports a
   5-hour window for verified accounts on the top plan, so `/v1/limits` now carries

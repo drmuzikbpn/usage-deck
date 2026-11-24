@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { configPath, defaultConfig, saveConfig } from '../src/config.js';
 import { DaemonClient, daemonFilePath, readDaemonInfo } from '../src/clients/http.js';
 import { PortInUseError, serve, startDaemon, type DaemonHandle } from '../src/daemon.js';
+import { SIGTERM_EXIT_CODE } from '../src/service/index.js';
 import { FakeTokensSource } from './helpers/fakes.js';
 import { tempConfigDir } from './helpers/fake-daemon.js';
 import { authFetch, TEST_TOKEN } from './helpers/raw-request.js';
@@ -182,19 +183,42 @@ describe('serve', () => {
     expect(lines.join('\n')).toMatch(/port/);
   });
 
-  it('shuts down on SIGTERM, removing daemon.json, and exits 0', async () => {
-    const dir = tempConfigDir();
-    const lines: string[] = [];
+  /** Wrapped, because awaiting an async function that returns a promise would wait for exit. */
+  async function serveUntilUp(dir: string, lines: string[]): Promise<{ exit: Promise<number> }> {
     const promise = serve({ configDir: dir, port: 0, poll: false, tokens: null, log: (l) => lines.push(l) });
     // Wait until daemon.json exists, then signal ourselves.
     for (let i = 0; i < 100 && !existsSync(daemonFilePath(dir)); i += 1) {
       await new Promise((r) => setTimeout(r, 10));
     }
     expect(existsSync(daemonFilePath(dir))).toBe(true);
+    return { exit: promise };
+  }
+
+  /**
+   * §23.74: a SIGTERM exits non-zero, so launchd's `KeepAlive.SuccessfulExit=false` and
+   * systemd's `RestartForceExitStatus=` relaunch a daemon a stray `pkill` hit. Every
+   * deliberate stop (`configure service off`, `uninstall`, shutdown, logout) goes through
+   * the supervisor, which does not relaunch whatever the exit code says.
+   */
+  it('shuts down on SIGTERM, removing daemon.json, and exits SIGTERM_EXIT_CODE', async () => {
+    const dir = tempConfigDir();
+    const lines: string[] = [];
+    const { exit } = await serveUntilUp(dir, lines);
     process.emit('SIGTERM', 'SIGTERM');
-    expect(await promise).toBe(0);
+    expect(await exit).toBe(SIGTERM_EXIT_CODE);
+    expect(SIGTERM_EXIT_CODE).toBe(143);
     expect(existsSync(daemonFilePath(dir))).toBe(false);
     expect(lines.join('\n')).toMatch(/SIGTERM received/);
+  });
+
+  it('exits 0 on SIGINT — Ctrl-C at a terminal is a deliberate stop', async () => {
+    const dir = tempConfigDir();
+    const lines: string[] = [];
+    const { exit } = await serveUntilUp(dir, lines);
+    process.emit('SIGINT', 'SIGINT');
+    expect(await exit).toBe(0);
+    expect(existsSync(daemonFilePath(dir))).toBe(false);
+    expect(lines.join('\n')).toMatch(/SIGINT received/);
   });
 });
 
