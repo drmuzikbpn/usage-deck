@@ -10,7 +10,8 @@ pre-commit:
     # Nothing private reaches a public repository: see CONTRIBUTING.md.
     public-check:
       run: bash scripts/public-check.sh
-    # GitGuardian's secret scanner, when it is installed and signed in (`ggshield auth login`).
-    # Skipped with a note otherwise; public-check above still runs.
+    # GitGuardian's secret scanner. Required: a machine without it fails the commit, on purpose.
+    # Set up once with `brew install ggshield` and `ggshield auth login` (see CONTRIBUTING.md).
+    # A confirmed false positive: `ggshield secret ignore --last-found`, never --no-verify.
     ggshield:
-      run: if command -v ggshield >/dev/null 2>&1; then ggshield secret scan pre-commit; else echo "ggshield not installed - skipped"; fi
+      run: ggshield secret scan pre-commit

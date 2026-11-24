@@ -60,8 +60,13 @@ The installed daemon runs on Node 20 or later; working on it (vitest 5, eslint 1
 Node 22.12 or later.
 
 `npm ci` installs the lefthook pre-commit hook for you via `prepare`; it runs lint, typecheck,
-`scripts/public-check.sh` and (when installed) `ggshield secret scan` on every commit. If your npm is set to skip install scripts (it
+`scripts/public-check.sh` and `ggshield secret scan` on every commit. If your npm is set to skip install scripts (it
 prints an `allow-scripts` warning), run `npx lefthook install` yourself.
+
+The secret scan is required: a commit fails on a machine without GitGuardian's `ggshield`. Set it
+up once with `brew install ggshield` (or `pipx install ggshield`) and `ggshield auth login`, which
+needs a free GitGuardian account. Clear a confirmed false positive with
+`ggshield secret ignore --last-found`; never commit with `--no-verify`.
 
 ## What may not be committed
 
