@@ -651,8 +651,8 @@ npm run build     # tsc -p tsconfig.build.json → dist/
 ```
 
 TDD per module; fixtures under `test/fixtures/` contain no credentials and no real prompt
-text. lefthook runs lint, typecheck, `scripts/public-check.sh` and (when installed) `ggshield secret
-scan` pre-commit (`npm run prepare` installs it). CI runs
+text. lefthook runs lint, typecheck, `scripts/public-check.sh` and `ggshield secret scan` pre-commit
+(required: install and sign in to ggshield first, see CONTRIBUTING.md) (`npm run prepare` installs it). CI runs
 lint, typecheck, test and build on `ubuntu-latest` and `macos-latest`.
 
 What CI cannot cover — launchd, systemd, the Keychain, a real Tailscale peer, a real

@@ -192,6 +192,13 @@ describe('scripts/public-check.sh', () => {
     });
   });
 
+  it('lefthook requires the ggshield secret scan, with no skip when it is missing', () => {
+    const hook = readFileSync(join(ROOT, 'lefthook.yml'), 'utf8');
+    expect(hook).toMatch(/^\s+run: ggshield secret scan pre-commit$/m);
+    expect(hook).not.toContain('command -v ggshield');
+    expect(hook).not.toMatch(/skipped/);
+  });
+
   it('is wired into lefthook and its blocklist is git-ignored', () => {
     expect(readFileSync(join(ROOT, 'lefthook.yml'), 'utf8')).toContain('scripts/public-check.sh');
     expect(readFileSync(join(ROOT, '.gitignore'), 'utf8').split('\n')).toContain('.public-check.local');
