@@ -753,7 +753,8 @@ describes; these are the differences worth knowing.
     on Node < 20; `src/install/preflight.ts` warns and continues (an unsupported platform
     is still a hard failure). Unreadable credentials are also a warning, by design.
 14. **systemd uses `Restart=on-failure`** (§23.9) rather than §8's `Restart=always`, and
-    adds `RestartSec=5`, `After=network.target`, `Type=simple`. Part III wins, as specified.
+    adds `RestartSec=5`, `After=network.target`, `Type=simple`, plus `SuccessExitStatus=143` and
+    `RestartForceExitStatus=143` so a stray SIGTERM is relaunched (§23.74). Part III wins, as specified.
 15. **The CLI subcommand is `tokens`, not `spend`.** §7.4's `claude-usage spend --since 7d
     --by project` is `claude-usage tokens --since 7d --by project`, following §23.3's
     rename of the endpoint. There is also an undocumented `claude-usage config` subcommand

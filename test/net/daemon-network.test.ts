@@ -9,6 +9,7 @@ import { planListeners, serve, startDaemon, PortInUseError, wantsHttp, wantsTls,
 import { FakeTokensSource } from '../helpers/fakes.js';
 import { tempConfigDir } from '../helpers/fake-daemon.js';
 import { rawRequest } from '../helpers/raw-request.js';
+import { SIGTERM_EXIT_CODE } from '../../src/service/index.js';
 
 const MAGIC_DNS = 'adams-mbp.tail1234.ts.net';
 const handles: DaemonHandle[] = [];
@@ -231,7 +232,7 @@ describe('serve() wiring', () => {
     expect(lines.join('\n')).toMatch(/SIGHUP received/);
 
     process.emit('SIGTERM', 'SIGTERM');
-    expect(await promise).toBe(0);
+    expect(await promise).toBe(SIGTERM_EXIT_CODE);
     expect(process.listenerCount('SIGHUP')).toBe(before);
   });
 });

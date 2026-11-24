@@ -72,13 +72,27 @@ export const LOG_TRUNCATE_BYTES = 10 * 1024 * 1024;
  * The restart contract both unit builders encode (§20, §23.9).
  *
  * Both supervisors are configured as "exit 0 means stay down" — launchd
- * `KeepAlive: { SuccessfulExit: false }`, systemd `Restart=on-failure` — because
- * `configure service off` and `uninstall` need a clean exit to actually stop the
- * daemon. Neither of them relaunches on exit 0, so the auto-updater asks for its
- * relaunch by exiting non-zero instead: 75, `EX_TEMPFAIL` from `sysexits.h`. It lives
- * here, next to the unit renderers, because the two must never drift apart.
+ * `KeepAlive: { SuccessfulExit: false }`, systemd `Restart=on-failure`. Neither of them
+ * relaunches on exit 0, so the auto-updater asks for its relaunch by exiting non-zero
+ * instead: 75, `EX_TEMPFAIL` from `sysexits.h`. A SIGTERM exits non-zero as well
+ * (`SIGTERM_EXIT_CODE`, §23.74); `configure service off` and `uninstall` stop the daemon
+ * through the supervisor, which does not relaunch it. Both codes live here, next to the
+ * unit renderers, because the two must never drift apart.
  */
 export const UPDATE_RESTART_EXIT_CODE = 75;
+
+/**
+ * What `serve` exits with after a SIGTERM (§23.74): 143, the shell's 128 + 15.
+ *
+ * Exit 0 here kept a daemon down after a stray `pkill`, because both supervisors read
+ * exit 0 as "stay down". Every deliberate stop goes through the supervisor — `bootout`
+ * for launchd, `systemctl stop` for systemd, and shutdown or logout for both — and none
+ * of those relaunches whatever the exit code says. So a SIGTERM can always exit non-zero:
+ * launchd relaunches it through `SuccessfulExit: false`, systemd through
+ * `RestartForceExitStatus=`, and `SuccessExitStatus=` keeps a `systemctl stop` from
+ * leaving the unit marked failed.
+ */
+export const SIGTERM_EXIT_CODE = 143;
 
 /** Default runner. A missing executable surfaces as `code: 127`, never a throw. */
 export const defaultExec: ExecRunner = (file, args) =>

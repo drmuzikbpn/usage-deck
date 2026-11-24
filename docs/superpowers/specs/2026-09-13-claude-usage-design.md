@@ -553,6 +553,27 @@ QA from the Android dashboard, and two Macs in daily use.
 | §23.51 | `claude-usage` on the PATH, and `pair` where you will see it (2026-10-02) |
 | §23.52 | The pair page: deck theme, copy link, "Pairing successful" (2026-10-02) |
 | §23.53 | `rotate-token` restarts the daemon (2026-10-02) |
+| §23.54 | Install wires the limits feed by default (2026-10-02) |
+| §23.55 | Every request needs the bearer, from loopback too (2026-10-13) |
+| §23.56 | What a token holder can make the session endpoints do (2026-10-13) |
+| §23.57 | HTTPS only off the machine; v1 pairing removed; bind safety (2026-10-13) |
+| §23.58 | Rotation reaches a foreground daemon; connection ceilings (2026-10-13) |
+| §23.59 | Signed releases (2026-10-13) |
+| §23.60 | Gaps found reading the CLI and updater (2026-10-13) |
+| §23.61 | A local listener proves itself before it gets the token (2026-10-13) |
+| §23.62 | Hardening from the second read-through (2026-10-13) |
+| §23.63 | An abandoned pairing code is revoked (2026-10-13) |
+| §23.64 | A plan upgrade drops usage mid-window (2026-10-25) |
+| §23.65 | …or starts a week that resets earlier (2026-10-25) |
+| §23.66 | A menu-bar item for the daemon (2026-10-30) |
+| §23.67 | A new week voids the scoped rows upstream can no longer update (2026-10-30) |
+| §23.68 | A plan with no 5-hour window says so (2026-11-03) |
+| §23.69 | Reading one session does not walk every session (2026-11-21) |
+| §23.70 | A scan reads the files that changed (2026-11-22) |
+| §23.71 | Snapshots are written in pieces, every 5 minutes (2026-11-22) |
+| §23.72 | A killed writer leaves no temp file (2026-11-22) |
+| §23.73 | Install offers SwiftBar when it is missing (2026-11-22) |
+| §23.74 | A stray SIGTERM no longer keeps the daemon down (2026-11-24) |
 
 15 findings survived a 3-vote adversarial review (56 unique candidates). Where Part I
 conflicts with this section, this section wins.
@@ -651,8 +672,8 @@ counters not attributable to one file, so no per-file rollback is attempted.
   `StandardErrorPath` to `~/Library/Logs/claude-usage/daemon.{out,err}.log` (dir created
   `0700`), `ProgramArguments` with the **absolute resolved node binary** (nvm/volta/fnm paths
   are not on launchd's PATH), `EnvironmentVariables.PATH` = the install-time PATH,
-  `RunAtLoad`, `KeepAlive: { SuccessfulExit: false }` — so `process.exit(0)` from the
-  auto-updater/`configure service off` is honoured. Logs are truncated at install when > 10 MB;
+  `RunAtLoad`, `KeepAlive: { SuccessfulExit: false }` — so exit 0 stays down and a non-zero
+  exit (the updater's 75, a SIGTERM's 143 since §23.74) is relaunched. Logs are truncated at install when > 10 MB;
   no rotation otherwise (documented). `status` prints the last 20 stderr lines when the daemon
   is down.
 - systemd user unit: absolute `ExecStart`, `Environment=PATH=…`, `Restart=on-failure`,
@@ -2193,3 +2214,36 @@ either, so the item was found only by reading the guide.
 
 **Tests:** `test/install/menu-bar.test.ts`, `test/install/install.test.ts`, `test/menubar.test.ts`,
 `test/update/cli.test.ts`.
+
+### §23.74 A stray SIGTERM no longer keeps the daemon down (2026-11-24)
+
+Amends §20 and §23.9. Issue #101: a broad `pkill` from another tool matched `claude-usage serve`,
+the daemon shut down cleanly and exited 0, and both supervisors read exit 0 as "stay down". It was
+down for about 4 h 40 min and MCP clients got no usage.
+
+- **`serve` exits 143 (128 + 15) after a SIGTERM**, `SIGTERM_EXIT_CODE` in `src/service/index.ts`.
+  The shutdown itself is unchanged: frozen pids are SIGCONTed and `daemon.json` is removed first.
+  SIGINT still exits 0, because Ctrl-C at a terminal is a deliberate stop.
+- **No marker file is needed.** Every deliberate stop goes through the supervisor, and neither
+  relaunches it whatever the exit code says:
+  - `configure service off` and `uninstall`: `launchctl bootout` unloads the job; `systemctl
+    --user stop` / `disable --now` sets systemd's no-restart flag for a manual stop, which it checks
+    before any exit-status list.
+  - Shutdown and logout: launchd tears the domain down; systemd stops the unit as a manual stop.
+  - `kickstart -k` and `systemctl restart` relaunch anyway, as they did.
+  - Nothing in the code SIGTERMs the daemon directly (`configure` sends SIGHUP only).
+- **launchd: no plist change.** `KeepAlive: { SuccessfulExit: false }` already relaunches any
+  non-zero exit. The comment in the plist now says so.
+- **systemd: two lines.** `SuccessExitStatus=143` keeps a `systemctl stop` reading `inactive`, not
+  `failed`. On its own it would also stop `Restart=on-failure` from relaunching a stray SIGTERM, so
+  `RestartForceExitStatus=143` forces that restart. Existing units get the lines when `install`
+  runs again; until then `Restart=on-failure` already relaunches a 143, and a `systemctl stop`
+  leaves the unit marked `failed` (stopped, not restarted).
+- **`status` is unchanged.** The issue suggested it say the service stopped after a SIGTERM. It no
+  longer stays stopped after one; the remaining ways to be down are a deliberate stop or a crash
+  loop, and `status` already prints the log tail when the daemon is down.
+- **Measured on macOS** with a throwaway LaunchAgent using the same `KeepAlive` dict and a node
+  process that exits 143 on SIGTERM: `kill -TERM` brought it back with a new pid, and `launchctl
+  bootout` left it down.
+
+**Tests:** `test/daemon.test.ts`, `test/service/systemd.test.ts`, `test/service/launchd.test.ts`.

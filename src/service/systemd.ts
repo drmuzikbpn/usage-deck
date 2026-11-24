@@ -10,6 +10,7 @@ import {
   SYSTEMD_UNIT,
   SYSTEMD_UNIT_NAME,
   tailLines,
+  SIGTERM_EXIT_CODE,
   UPDATE_RESTART_EXIT_CODE,
   type ExecRunner,
   type ServiceManager,
@@ -56,6 +57,10 @@ ${envLines}
 # KeepAlive.SuccessfulExit=false on macOS.
 Restart=on-failure
 RestartSec=5
+# A SIGTERM exits ${String(SIGTERM_EXIT_CODE)} (§23.74). A stray one is restarted; a systemctl stop is
+# never restarted, and the success status keeps it from reading "failed".
+SuccessExitStatus=${String(SIGTERM_EXIT_CODE)}
+RestartForceExitStatus=${String(SIGTERM_EXIT_CODE)}
 
 [Install]
 WantedBy=default.target

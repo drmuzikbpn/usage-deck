@@ -15,6 +15,7 @@ import type { FreezeDeps } from './pause/freeze.js';
 import { isLoopbackAddress } from './server/middleware.js';
 import { startBusPublishers } from './server/events.js';
 import { createSessionsSubsystem, type SessionsSubsystem } from './sessions/index.js';
+import { SIGTERM_EXIT_CODE } from './service/index.js';
 import { createServer, type UsageServer } from './server/index.js';
 import { orderPairingAddrs } from './server/pairing.js';
 import { defaultInstallPaths, type InstallPaths } from './server/install-state.js';
@@ -712,8 +713,12 @@ export async function startDaemon(opts: DaemonOptions = {}): Promise<DaemonHandl
 }
 
 /**
- * `claude-usage serve` — start and keep running until SIGTERM/SIGINT, then flush,
- * remove `daemon.json` and exit 0. Port in use → exit 1 with a clear message.
+ * `claude-usage serve` — start and keep running until SIGTERM/SIGINT, then flush and
+ * remove `daemon.json`. Port in use → exit 1 with a clear message.
+ *
+ * SIGINT exits 0: Ctrl-C at a terminal is a deliberate stop. SIGTERM exits
+ * `SIGTERM_EXIT_CODE` (§23.74), so the supervisor relaunches a daemon a stray `pkill`
+ * hit; deliberate stops go through the supervisor, which never relaunches them.
  */
 export async function serve(opts: DaemonOptions = {}): Promise<number> {
   const log = opts.log ?? ((line: string) => process.stderr.write(`${line}\n`));
@@ -764,15 +769,18 @@ export async function serve(opts: DaemonOptions = {}): Promise<number> {
   };
   process.on('SIGHUP', reload);
 
-  await new Promise<void>((resolve) => {
-    const shutdown = (signal: NodeJS.Signals): void => {
-      log(`claude-usage: ${signal} received, shutting down`);
+  const signal = await new Promise<NodeJS.Signals>((resolve) => {
+    const shutdown = (received: NodeJS.Signals): void => {
+      log(`claude-usage: ${received} received, shutting down`);
       process.removeListener('SIGHUP', reload);
-      void h.stop().then(resolve, resolve);
+      const done = (): void => {
+        resolve(received);
+      };
+      void h.stop().then(done, done);
     };
     process.once('SIGTERM', shutdown);
     process.once('SIGINT', shutdown);
   });
-  return 0;
+  return signal === 'SIGTERM' ? SIGTERM_EXIT_CODE : 0;
   }
 }

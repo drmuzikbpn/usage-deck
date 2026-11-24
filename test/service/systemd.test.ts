@@ -4,7 +4,13 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { renderUnit, systemdQuote, SystemdService } from '../../src/service/systemd.js';
-import { buildUnit, ServiceError, SYSTEMD_UNIT, UPDATE_RESTART_EXIT_CODE } from '../../src/service/index.js';
+import {
+  buildUnit,
+  ServiceError,
+  SIGTERM_EXIT_CODE,
+  SYSTEMD_UNIT,
+  UPDATE_RESTART_EXIT_CODE,
+} from '../../src/service/index.js';
 import { NoopService } from '../../src/service/noop.js';
 import { absolutePath, SYSTEM_PATH, systemBin } from '../../src/service/bins.js';
 import { createServiceManager } from '../../src/service/index.js';
@@ -61,10 +67,27 @@ describe('unit file', () => {
     expect(text).toContain('Restart=on-failure');
     expect(text).not.toContain('Restart=always');
     // Nothing may declare the updater's exit code a success, or it would never restart.
-    expect(text).not.toMatch(/^SuccessExitStatus=/m);
+    expect(text).not.toMatch(new RegExp(`^SuccessExitStatus=.*\\b${String(UPDATE_RESTART_EXIT_CODE)}\\b`, 'm'));
     // The policy is documented in the unit itself, naming the exit code.
     expect(text).toContain(`# ${String(UPDATE_RESTART_EXIT_CODE)} (EX_TEMPFAIL)`);
     expect(UPDATE_RESTART_EXIT_CODE).not.toBe(0);
+  });
+
+  /**
+   * §23.74: the daemon exits 143 on any SIGTERM. `RestartForceExitStatus=` relaunches it
+   * after a stray one; `SuccessExitStatus=` keeps a `systemctl stop` (configure service off,
+   * uninstall, shutdown) reading "inactive", not "failed". A manual stop never restarts:
+   * systemd checks that before either list.
+   */
+  it('relaunches after a stray SIGTERM, and a deliberate stop still reads inactive', async () => {
+    const h = tempHome();
+    const svc = new SystemdService({ env: h.env, exec: fakeExec().runner });
+    await svc.install(unit());
+    const text = readFileSync(svc.unitPath, 'utf8');
+
+    expect(text).toMatch(new RegExp(`^SuccessExitStatus=${String(SIGTERM_EXIT_CODE)}$`, 'm'));
+    expect(text).toMatch(new RegExp(`^RestartForceExitStatus=${String(SIGTERM_EXIT_CODE)}$`, 'm'));
+    expect(SIGTERM_EXIT_CODE).not.toBe(UPDATE_RESTART_EXIT_CODE);
   });
 });
 
