@@ -19,7 +19,11 @@ name: Release
 # no Gradle or Xcode build ever runs where this key can be read. Releases publish without a manual
 # approval step: the gate is the protected `main` branch itself.
 on:
-  push: { branches: [main] }
+  push:
+    branches: [main]
+    # The Windows program under windows/ is not in the daemon tarball (package.json `files`);
+    # a change only there would ship every installed daemon an identical update.
+    paths-ignore: ['windows/**']
   workflow_dispatch:
 
 # Two pushes in quick succession would otherwise race for the same tag; the second

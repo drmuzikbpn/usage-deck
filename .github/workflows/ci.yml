@@ -35,3 +35,13 @@ jobs:
           git fetch --no-tags --depth=1 origin "$BASE"
           git diff --no-color --no-ext-diff -U0 --diff-filter=ACMR "$BASE" HEAD > "$RUNNER_TEMP/pr.diff"
           bash scripts/public-check.sh --diff "$RUNNER_TEMP/pr.diff"
+
+  # The Windows program (windows/, C# / .NET 9) is separate from the daemon and builds only here.
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with: { dotnet-version: 9.0.x }
+      - run: dotnet test windows/usagebar.sln -c Release

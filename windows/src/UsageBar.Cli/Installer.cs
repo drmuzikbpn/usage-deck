@@ -63,7 +63,7 @@ public static class Installer
             key.SetValue(RunValue, $"\"{Paths.CurrentTrayExe}\"");
             Console.WriteLine("  ok");
         }
-        if (!TrayControl.IsRunning())
+        if (!TrayControl.IsRunning() && Confirm(yes, "Start the tray icon now?"))
         {
             Process.Start(new ProcessStartInfo(Paths.CurrentTrayExe) { UseShellExecute = true, WorkingDirectory = Paths.CurrentDir });
             Console.WriteLine("  started the tray icon. Windows 11 hides new icons under the ^ arrow — drag it onto the taskbar,");

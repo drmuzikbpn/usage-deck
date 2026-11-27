@@ -594,8 +594,10 @@ machines alike, which is why nothing else reveals it.
 
 - **macOS** — launchd; credentials from the Keychain item `Claude Code-credentials`.
 - **Linux** — systemd user unit; credentials from `~/.claude/.credentials.json`.
-- **Windows** — not supported yet. Install fails preflight; the credential and
-  service-manager interfaces exist so it can be added without touching the daemon.
+- **Windows** — the daemon does not run there (install fails preflight). A separate,
+  limits-only Windows version lives in [`windows/`](../windows/README.md): a tray icon, the
+  status line and the MCP server, built with .NET 9. No token spend, sessions, pause or phone
+  pairing yet.
 
 Node ≥ 20. The daemon itself has zero runtime dependencies — `@modelcontextprotocol/sdk`
 is loaded lazily by `mcp` only, and the `pair` page's QR code comes from a vendored copy of
