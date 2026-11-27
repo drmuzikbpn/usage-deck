@@ -1,0 +1,14 @@
+<!-- SPDX-License-Identifier: MIT -->
+<!-- Copyright (c) 2026 Even Seal Productions -->
+<Project>
+  <PropertyGroup>
+    <Version>0.1.0</Version>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <Product>usagebar</Product>
+    <Company>usagebar</Company>
+    <Copyright>MIT License</Copyright>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+</Project>

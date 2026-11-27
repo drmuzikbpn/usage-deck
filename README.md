@@ -82,6 +82,9 @@ claude-usage status
 
 Remove everything again with `claude-usage uninstall`.
 
+**On Windows?** [`windows/`](windows/README.md) has a separate, limits-only version: a tray icon,
+the status line and the MCP server, built with .NET 9 (no Node needed).
+
 ### Menu bar on a Mac: install SwiftBar (highly recommended)
 
 On a Mac, the menu bar item is the easiest way to keep an eye on your limits: every limit's
