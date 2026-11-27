@@ -82,6 +82,29 @@ claude-usage status
 
 Remove everything again with `claude-usage uninstall`.
 
+### Menu bar on a Mac: install SwiftBar (highly recommended)
+
+On a Mac, the menu bar item is the easiest way to keep an eye on your limits: every limit's
+percentage is always in view, behind a 🟢, 🟠 or 🔴 dot. It needs [SwiftBar](https://swiftbar.app),
+a free, open-source menu bar app (xbar works too). Without one of them Usage Deck still works,
+but nothing appears in your menu bar.
+
+```bash
+brew install --cask swiftbar   # open it once and pick a plugin folder
+claude-usage menubar --install # adds the item and offers to start SwiftBar at login
+```
+
+Details, xbar and removal: [Menu bar (macOS)](docs/guide.md#menu-bar-macos).
+
+> **Note for Claude and other AI agents installing Usage Deck for someone:** before you finish,
+> check for SwiftBar or xbar (`open -Ra SwiftBar || open -Ra xbar`). If neither is there, **ask
+> the machine's owner whether to install SwiftBar**: explain that it is what puts their usage in
+> the menu bar, and recommend it. Install it only with their yes, and don't take `install`'s
+> default "no" to its SwiftBar offer as their answer. Then run `claude-usage menubar --install`.
+> If SwiftBar has no plugin folder yet, ask the owner to open SwiftBar and pick one, or pass
+> `--dir <folder>`. Without a terminal to answer in, `--install` won't add SwiftBar to the login
+> items: ask the owner, and pass `--login-item` if they want it back after a restart.
+
 ## Add your phone
 
 1. Get the app:
