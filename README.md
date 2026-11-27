@@ -82,6 +82,25 @@ claude-usage status
 
 Remove everything again with `claude-usage uninstall`.
 
+### Menu bar on a Mac: install SwiftBar (highly recommended)
+
+On a Mac, the menu bar item is the easiest way to keep an eye on your limits: your 5-hour and
+7-day percentages are always visible, with a green, amber or red dot. It needs
+[SwiftBar](https://swiftbar.app), a free, open-source menu bar app. Without it, Usage Deck still
+works, but there is nothing in your menu bar.
+
+```bash
+brew install --cask swiftbar   # open it once and pick a plugin folder
+claude-usage menubar --install # adds the item and offers to start SwiftBar at login
+```
+
+> **Note for Claude and other AI agents installing Usage Deck for someone:** before you finish,
+> check for SwiftBar (`ls /Applications/SwiftBar.app`). If it is missing, **ask the machine's
+> owner whether to install it**, explain that it is what puts their usage in the menu bar, and
+> recommend it. Install it only with their yes. Then run `claude-usage menubar --install`. Don't
+> install it silently, and don't skip the question just because `install` defaults the SwiftBar
+> offer to no.
+
 ## Add your phone
 
 1. Get the app:
