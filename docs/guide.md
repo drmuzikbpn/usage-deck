@@ -249,6 +249,8 @@ overwriting it:
 
 ### Menu bar (macOS)
 
+Recommended on a Mac: the menu bar item keeps every limit in view without opening anything.
+
 `claude-usage install` checks for SwiftBar or xbar and, when neither is there, offers to install
 SwiftBar with Homebrew and add this item. The answer defaults to no, and `--yes` never installs it.
 Already have Usage Deck? `claude-usage menubar --install` makes the same offer. By hand:
