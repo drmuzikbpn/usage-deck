@@ -15,7 +15,7 @@ and Android.
 
 [![CI](https://github.com/drmuzikbpn/usage-deck/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/drmuzikbpn/usage-deck/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-![macOS | Linux](https://img.shields.io/badge/runs%20on-macOS%20%7C%20Linux-555)
+![macOS | Linux | Windows](https://img.shields.io/badge/runs%20on-macOS%20%7C%20Linux%20%7C%20Windows-555)
 ![Node 20+](https://img.shields.io/badge/node-20%2B-339933)
 
 <img src="docs/images/header.png" alt="Usage Deck: your Claude Code rate limits and every live session, on iPhone, Apple Watch and your desk" width="100%">
@@ -38,7 +38,8 @@ https://github.com/user-attachments/assets/0f93ea22-bf9a-4794-9a2e-3a686739377d
 
 ---
 
-`claude-usage` is the small background service at the heart of Usage Deck, for macOS and Linux. It reads the same usage
+`claude-usage` is the small background service at the heart of Usage Deck, for macOS and Linux
+(Windows has [its own version](#windows)). It reads the same usage
 numbers `/usage` shows, adds up the tokens your Claude Code sessions spend, and puts both
 where you need them:
 
@@ -105,6 +106,23 @@ Details, xbar and removal: [Menu bar (macOS)](docs/guide.md#menu-bar-macos).
 > `--dir <folder>`. Without a terminal to answer in, `--install` won't add SwiftBar to the login
 > items: ask the owner, and pass `--login-item` if they want it back after a restart.
 
+### Windows
+
+**Usage Deck now runs on Windows.** A separate Windows version keeps your Claude limits in view:
+a tray icon, the Claude Code status line, and an MCP server a session can ask.
+It needs the [.NET 9 SDK](https://dotnet.microsoft.com/download/dotnet/9.0) and Claude Code
+signed in, but no Node. In PowerShell:
+
+```powershell
+git clone https://github.com/drmuzikbpn/usage-deck.git
+cd usage-deck\windows
+.\build.ps1                       # runs the tests, then publishes to .\publish
+.\publish\usagebar.exe install    # asks before each step
+```
+
+It shows limits only for now: no token spend, sessions, pause or phone pairing yet. Details:
+[windows/README.md](windows/README.md).
+
 ## Add your phone
 
 1. Get the app:
@@ -136,6 +154,9 @@ Details, xbar and removal: [Menu bar (macOS)](docs/guide.md#menu-bar-macos).
   [Tailscale](https://tailscale.com) (free for personal use): run
   `claude-usage install --tailscale` and pair again. See
   [Away from home](docs/guide.md#away-from-home-tailscale-optional).
+- **On Windows it shows limits only.** The Windows version has no token totals, session
+  list, pause or phone pairing yet, and it does not update itself: pull and run `build.ps1`
+  again for a new version.
 - **It only works with Claude Code for now.** Limits come from your Claude Code sign-in and
   session data from Claude Code's own files. Support for more tools is coming.
 

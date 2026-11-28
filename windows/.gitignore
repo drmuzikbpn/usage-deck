@@ -1,0 +1,10 @@
+bin/
+obj/
+publish/
+*.user
+.vs/
+TestResults/
+# never commit credentials or real Claude data
+.credentials.json
+*.credentials.json
+state.json

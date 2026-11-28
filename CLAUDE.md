@@ -3,7 +3,9 @@
 Local daemon + hooks + MCP server giving Claude Code sessions account rate-limit % and local
 token spend; remote dashboards consume it over the LAN (HTTPS, pinned) or Tailscale — the Android
 dashboard lives on orphan branch `usage-android` of this repo; the iOS/watch app lives on
-`usage-ios`. **Spec is authoritative:** `docs/superpowers/specs/2026-09-13-claude-usage-design.md`
+`usage-ios`. A separate limits-only Windows program (C# / .NET 9, tray + status line + MCP) lives
+in `windows/` on `main`; it is not in the daemon tarball, CI's `windows` job builds and tests it,
+and changes only under `windows/` cut no release. **Spec is authoritative:** `docs/superpowers/specs/2026-09-13-claude-usage-design.md`
 — Part II and Part III override Part I where they conflict. Plan: `docs/superpowers/plans/`.
 
 ## Commands

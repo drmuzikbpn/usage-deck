@@ -29,6 +29,12 @@ updates:
     target-branch: main
     schedule: { interval: weekly }
     open-pull-requests-limit: 0
+  # --- main: the Windows program (windows/) ----------------------------------------
+  - package-ecosystem: nuget
+    directory: /windows
+    target-branch: main
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 0
 
   # --- usage-android: the Android dashboard --------------------------------------
   - package-ecosystem: gradle

@@ -9,10 +9,13 @@ const SPDX = 'SPDX-License-Identifier: MIT';
 const COPYRIGHT = 'Copyright (c) 2026 Even Seal Productions';
 
 /** Directories whose every source file carries the header; `vendor/` and fixtures keep their own. */
-const TREES = ['src', 'test', 'scripts', 'bin', '.github/workflows'];
+const TREES = ['src', 'test', 'scripts', 'bin', '.github/workflows', 'windows'];
 const SINGLE = ['lefthook.yml', 'eslint.config.js', 'vitest.config.ts', '.github/dependabot.yml', '.gitleaks.toml'];
-const SKIP_DIRS = new Set(['fixtures', 'node_modules']);
-const SOURCE = /\.(ts|mjs|js|sh|ya?ml)$/;
+// `Fixtures` is the Windows tests' copy; `obj`/`bin` below windows/ are .NET build output.
+const SKIP_DIRS = new Set(['fixtures', 'Fixtures', 'node_modules', 'obj', 'bin']);
+const SOURCE = /\.(ts|mjs|js|sh|ya?ml|cs|ps1|csproj|props)$/;
+/** XML files (csproj, props) carry the lines inside `<!-- … -->`. */
+const line = (s: string | undefined) => (s ?? '').replace(/\s*-->\s*$/, '');
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
@@ -38,7 +41,7 @@ describe('licence headers', () => {
     for (const file of files) {
       const lines = readFileSync(file, 'utf8').split('\n');
       const start = lines[0]?.startsWith('#!') ? 1 : 0;
-      if (!(lines[start] ?? '').endsWith(SPDX) || !(lines[start + 1] ?? '').endsWith(COPYRIGHT)) {
+      if (!line(lines[start]).endsWith(SPDX) || !line(lines[start + 1]).endsWith(COPYRIGHT)) {
         missing.push(relative(ROOT, file));
       }
     }

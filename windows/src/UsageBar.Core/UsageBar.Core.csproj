@@ -1,0 +1,11 @@
+<!-- SPDX-License-Identifier: MIT -->
+<!-- Copyright (c) 2026 Even Seal Productions -->
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <RootNamespace>UsageBar.Core</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="UsageBar.Tests" />
+  </ItemGroup>
+</Project>
